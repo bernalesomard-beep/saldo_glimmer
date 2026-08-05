@@ -151,7 +151,7 @@
 </div>
 </header>
 
-<div class="p-6 space-y-6 max-w-[1700px] mx-auto w-full flex-1 flex flex-col">
+<div class="p-6 space-y-6 w-full flex-1 flex flex-col">
 
 <!-- ================= SECCIÓN DASHBOARD ================= -->
 <div id="view-dashboard" class="section-view active flex-1 space-y-6">
@@ -201,6 +201,26 @@
 </div>
 <div id="cards-resumen" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4"></div>
 </section>
+
+<section>
+<div class="flex items-center justify-between mb-4">
+<h2 class="font-headline-md text-headline-md text-on-surface">Alimentar Ocupabilidad</h2>
+<span class="text-body-md text-on-surface-variant" id="ocup-fecha-hoy">—</span>
+</div>
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 shadow-sm max-w-sm">
+<div class="space-y-3 mb-4">
+<div class="flex justify-between items-center">
+<span class="text-xs font-bold text-on-surface-variant uppercase">Total a registrar hoy</span>
+<span class="font-data-mono text-lg font-bold text-primary" id="ocup-total-val">—</span>
+</div>
+<p class="text-xs text-on-surface-variant">Ubicaciones únicas con existencia registradas en Saldo.</p>
+</div>
+<button onclick="alimentarOcupabilidad()" id="btn-alimentar-ocupabilidad" class="w-full bg-primary text-on-primary py-2 rounded-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-[18px]">bolt</span>Alimentar
+</button>
+<p id="ocup-msg" class="text-xs mt-2 text-on-surface-variant"></p>
+</div>
+</section>
 </div>
 
 <!-- ================= SECCIÓN SALDO ================= -->
@@ -225,14 +245,43 @@
 </button>
 </div>
 </div>
-<div class="overflow-auto flex-1" style="max-height: calc(100vh - 420px);">
-<table class="w-full text-left border-collapse min-w-[1900px]">
+<div class="px-6 py-3 border-b border-outline-variant bg-surface-container-low/50 flex flex-wrap items-end gap-3">
+<div class="flex flex-col gap-1">
+<label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">WHS</label>
+<select id="filtro-whs" onchange="aplicarFiltroSaldo()" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-28 outline-none focus:ring-2 focus:ring-primary">
+<option value="">Todas</option>
+</select>
+</div>
+<div class="flex flex-col gap-1">
+<label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">Ubicación</label>
+<input id="filtro-ubicacion" oninput="aplicarFiltroSaldoDebounced()" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-32 outline-none focus:ring-2 focus:ring-primary" type="text" placeholder="042206">
+</div>
+<div class="flex flex-col gap-1">
+<label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">Código</label>
+<input id="filtro-codigo" oninput="aplicarFiltroSaldoDebounced()" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-40 outline-none focus:ring-2 focus:ring-primary" type="text" placeholder="sbbeauty...">
+</div>
+<div class="flex flex-col gap-1">
+<label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">Código BPCS</label>
+<input id="filtro-codigo-bpcs" oninput="aplicarFiltroSaldoDebounced()" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-32 outline-none focus:ring-2 focus:ring-primary" type="text" placeholder="GY1030581">
+</div>
+<div class="flex flex-col gap-1">
+<label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">EAN</label>
+<input id="filtro-ean" oninput="aplicarFiltroSaldoDebounced()" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-36 outline-none focus:ring-2 focus:ring-primary" type="text" placeholder="6958697900568">
+</div>
+<button onclick="limpiarFiltrosSaldo()" class="flex items-center gap-1 px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10">
+<span class="material-symbols-outlined text-[16px]">filter_alt_off</span>Limpiar
+</button>
+</div>
+<div class="overflow-auto flex-1" style="max-height: calc(100vh - 470px);">
+<table class="w-full text-left border-collapse min-w-[2200px]">
 <thead class="bg-surface-container-low sticky top-0 z-20">
 <tr class="text-table-header font-table-header text-on-surface-variant">
-<th class="px-4 py-3 border-b border-outline-variant">ID</th>
+<th class="px-4 py-3 border-b border-outline-variant w-10"><input type="checkbox" id="chk-all-saldo" onclick="toggleSaldoAll(this.checked)"></th>
 <th class="px-4 py-3 border-b border-outline-variant">WHS</th>
 <th class="px-4 py-3 border-b border-outline-variant">UBICACIÓN</th>
 <th class="px-4 py-3 border-b border-outline-variant">CÓDIGO</th>
+<th class="px-4 py-3 border-b border-outline-variant">CÓD. BPCS</th>
+<th class="px-4 py-3 border-b border-outline-variant">EAN 13</th>
 <th class="px-4 py-3 border-b border-outline-variant">DESCRIPCIÓN</th>
 <th class="px-4 py-3 border-b border-outline-variant">LOTE BPCS</th>
 <th class="px-4 py-3 border-b border-outline-variant">LOTE FÍSICO</th>
@@ -348,9 +397,11 @@ const URL_OCUPABILIDAD = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQMPc1
 // URL del Apps Script (Extensiones > Apps Script en el Sheet de SALDO) que recibe la
 // plantilla subida y sobre-escribe la pestaña real. Pégala aquí cuando la despliegues.
 const APPS_SCRIPT_URL_SALDO = ''; // ej: 'https://script.google.com/macros/s/AAA.../exec'
-// Debe coincidir EXACTAMENTE con la constante TOKEN del Code.gs
+// URL del Apps Script (Extensiones > Apps Script en el Sheet de MAESTRA/BODEGAS/OCUPABILIDAD)
+// que recibe el valor del día y lo escribe en la pestaña OCUPABILIDAD. Pégala cuando la despliegues.
+const APPS_SCRIPT_URL_OCUPABILIDAD = ''; // ej: 'https://script.google.com/macros/s/BBB.../exec'
+// Debe coincidir EXACTAMENTE con la constante TOKEN de ambos Code.gs
 const UPLOAD_TOKEN = '2026';
-
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
 const PAGE_SIZE = 200;           // filas que se pintan por tanda en Saldo
 
@@ -442,6 +493,14 @@ let dataSaldo = [], dataMaestra = [], dataBodegas = [], dataOcupabilidad = [];
 let headersOcupabilidad = [];
 let saldoRenderCount = 0;
 let saldoFiltrado = [];
+let maestraByBpcs = new Map();   // CODIGO BPCS (upper) -> { codigoCliente, ean13 }
+let selectedSaldoIds = new Set(); // IDs SALDO seleccionados vía checkbox
+
+// Debounce genérico para no re-filtrar en cada tecla
+function debounce(fn, wait) {
+    let t;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); };
+}
 
 // =========================================================
 // FECHAS (formato AAAAMMDD, ej. 20281231)
@@ -504,12 +563,15 @@ async function cargarTodo(force = false) {
     icon.classList.add('spin');
     try {
         await Promise.all([cargarSaldo(force), cargarMaestra(force), cargarBodegas(force), cargarOcupabilidad(force)]);
+        buildMaestraIndex();
         renderBodegas();
         renderResumen();
         renderKPIsDashboard();
+        poblarFiltroWHS();
         aplicarFiltroSaldo();
         renderMaestra();
         renderOcupabilidad();
+        updateOcupabilidadWidget();
         const horaActual = new Date().toLocaleTimeString('es-PE');
         document.getElementById('last-updated').textContent = 'Actualizado: ' + horaActual;
         document.getElementById('saldo-updated-label').textContent = 'Última carga: ' + horaActual;
@@ -521,6 +583,37 @@ async function cargarTodo(force = false) {
     }
 }
 function forceReloadAll() { cargarTodo(true); }
+
+// =========================================================
+// CRUCE SALDO <-> MAESTRA (por CÓDIGO BPCS)
+// El "CODIGO" que trae la hoja de Saldo corresponde al campo
+// "CODIGO BPCS" de la Maestra, no al "CODIGO" (cliente) de la Maestra.
+// =========================================================
+function buildMaestraIndex() {
+    maestraByBpcs = new Map();
+    dataMaestra.forEach(m => {
+        const bpcs = String(m['CODIGO BPCS'] || '').trim().toUpperCase();
+        if (!bpcs) return;
+        maestraByBpcs.set(bpcs, {
+            codigoCliente: m['CODIGO'] || '',
+            ean13: m['EAN 13'] || ''
+        });
+    });
+}
+function poblarFiltroWHS() {
+    const sel = document.getElementById('filtro-whs');
+    const actual = sel.value;
+    sel.innerHTML = '<option value="">Todas</option>';
+    dataBodegas.forEach(b => {
+        const codigo = b['BODEGA'] || '';
+        if (!codigo) return;
+        const opt = document.createElement('option');
+        opt.value = codigo;
+        opt.textContent = codigo;
+        sel.appendChild(opt);
+    });
+    sel.value = actual;
+}
 
 // =========================================================
 // RESUMEN POR BODEGA (tarjetas dinámicas)
@@ -591,21 +684,42 @@ function renderKPIsDashboard() {
 }
 
 // =========================================================
-// TABLA SALDO (con búsqueda + carga por tandas)
+// TABLA SALDO (búsqueda global + filtros específicos + carga por tandas)
 // =========================================================
 function aplicarFiltroSaldo() {
-    const q = (document.getElementById('global-search').value || '').trim().toUpperCase();
-    if (!q) {
-        saldoFiltrado = dataSaldo;
-    } else {
-        saldoFiltrado = dataSaldo.filter(r =>
-            Object.values(r).some(v => String(v).toUpperCase().includes(q))
-        );
-    }
+    const q     = (document.getElementById('global-search').value || '').trim().toUpperCase();
+    const fWhs  = (document.getElementById('filtro-whs').value || '').trim().toUpperCase();
+    const fUbic = (document.getElementById('filtro-ubicacion').value || '').trim().toUpperCase();
+    const fCod  = (document.getElementById('filtro-codigo').value || '').trim().toUpperCase();
+    const fBpcs = (document.getElementById('filtro-codigo-bpcs').value || '').trim().toUpperCase();
+    const fEan  = (document.getElementById('filtro-ean').value || '').trim().toUpperCase();
+
+    saldoFiltrado = dataSaldo.filter(r => {
+        if (q && !Object.values(r).some(v => String(v).toUpperCase().includes(q))) return false;
+        if (fWhs && (r['WHS'] || '').toUpperCase() !== fWhs) return false;
+        const ubic = (r['UBICACIÓN'] || r['UBICACION'] || '').toUpperCase();
+        if (fUbic && !ubic.includes(fUbic)) return false;
+        const bpcsVal = (r['CODIGO'] || '').toUpperCase();
+        if (fBpcs && !bpcsVal.includes(fBpcs)) return false;
+        const info = maestraByBpcs.get(bpcsVal) || {};
+        if (fCod && !String(info.codigoCliente || '').toUpperCase().includes(fCod)) return false;
+        if (fEan && !String(info.ean13 || '').toUpperCase().includes(fEan)) return false;
+        return true;
+    });
     saldoRenderCount = 0;
     document.getElementById('tbody-saldo').innerHTML = '';
     renderChunkSaldo();
 }
+const aplicarFiltroSaldoDebounced = debounce(aplicarFiltroSaldo, 300);
+
+function limpiarFiltrosSaldo() {
+    ['filtro-whs','filtro-ubicacion','filtro-codigo','filtro-codigo-bpcs','filtro-ean'].forEach(id => {
+        document.getElementById(id).value = '';
+    });
+    document.getElementById('global-search').value = '';
+    aplicarFiltroSaldo();
+}
+
 function renderChunkSaldo() {
     const tbody = document.getElementById('tbody-saldo');
     const slice = saldoFiltrado.slice(saldoRenderCount, saldoRenderCount + PAGE_SIZE);
@@ -614,14 +728,20 @@ function renderChunkSaldo() {
         const whs = r['WHS'] || '';
         const st = BODEGA_STYLE[whs.toUpperCase()] || DEFAULT_STYLE;
         const saldoNum = parseFloat((r['SALDO']||'0').replace(/,/g,'')) || 0;
+        const id = r['ID SALDO'] || '';
+        const bpcsVal = (r['CODIGO'] || '').toUpperCase();
+        const info = maestraByBpcs.get(bpcsVal) || {};
+        const checked = selectedSaldoIds.has(id) ? 'checked' : '';
         const tr = document.createElement('tr');
         tr.className = (saldoRenderCount + i) % 2 ? '' : 'bg-surface-container-low/30';
         tr.className += ' hover:bg-surface-variant/10 transition-colors';
         tr.innerHTML = `
-            <td class="px-4 py-2 font-data-mono">${r['ID SALDO'] || ''}</td>
+            <td class="px-4 py-2"><input type="checkbox" class="chk-saldo-row" data-id="${id}" ${checked} onclick="toggleSaldoRow('${id}', this.checked)"></td>
             <td class="px-4 py-2 text-center"><span class="${st.chip} px-2 py-0.5 rounded text-[11px] font-bold font-data-mono">${whs}</span></td>
             <td class="px-4 py-2 font-data-mono">${r['UBICACIÓN'] || r['UBICACION'] || ''}</td>
+            <td class="px-4 py-2 font-data-mono">${info.codigoCliente || ''}</td>
             <td class="px-4 py-2 font-data-mono">${r['CODIGO'] || ''}</td>
+            <td class="px-4 py-2 font-data-mono">${info.ean13 || ''}</td>
             <td class="px-4 py-2">${r['DESC'] || ''}</td>
             <td class="px-4 py-2 font-data-mono">${r['LOTE BPCS'] || ''}</td>
             <td class="px-4 py-2 font-data-mono">${r['LOTE FISICO'] || ''}</td>
@@ -635,11 +755,30 @@ function renderChunkSaldo() {
     tbody.appendChild(frag);
     saldoRenderCount += slice.length;
 
-    document.getElementById('saldo-count-label').textContent =
-        `Mostrando ${saldoRenderCount.toLocaleString('es-PE')} de ${saldoFiltrado.length.toLocaleString('es-PE')} registros`;
+    actualizarEtiquetaConteoSaldo();
     document.getElementById('btn-cargar-mas-saldo').classList.toggle('hidden', saldoRenderCount >= saldoFiltrado.length);
+    document.getElementById('chk-all-saldo').checked = false;
 }
 function cargarMasSaldo() { renderChunkSaldo(); }
+
+function actualizarEtiquetaConteoSaldo() {
+    const base = `Mostrando ${saldoRenderCount.toLocaleString('es-PE')} de ${saldoFiltrado.length.toLocaleString('es-PE')} registros`;
+    const sel = selectedSaldoIds.size ? ` • ${selectedSaldoIds.size.toLocaleString('es-PE')} seleccionados` : '';
+    document.getElementById('saldo-count-label').textContent = base + sel;
+}
+
+function toggleSaldoRow(id, checked) {
+    if (checked) selectedSaldoIds.add(id); else selectedSaldoIds.delete(id);
+    actualizarEtiquetaConteoSaldo();
+}
+function toggleSaldoAll(checked) {
+    document.querySelectorAll('#tbody-saldo .chk-saldo-row').forEach(chk => {
+        chk.checked = checked;
+        const id = chk.dataset.id;
+        if (checked) selectedSaldoIds.add(id); else selectedSaldoIds.delete(id);
+    });
+    actualizarEtiquetaConteoSaldo();
+}
 
 // =========================================================
 // TABLA BODEGAS
@@ -749,7 +888,30 @@ document.getElementById('side-nav').addEventListener('click', (e) => {
 // =========================================================
 function exportarXLSX(tipo) {
     let data, nombre, hoja;
-    if (tipo === 'saldo')        { data = saldoFiltrado.length ? saldoFiltrado : dataSaldo; nombre = 'saldo'; hoja = 'Saldo'; }
+    if (tipo === 'saldo') {
+        const base = selectedSaldoIds.size
+            ? dataSaldo.filter(r => selectedSaldoIds.has(r['ID SALDO']))
+            : (saldoFiltrado.length ? saldoFiltrado : dataSaldo);
+        data = base.map(r => {
+            const bpcsVal = (r['CODIGO'] || '').toUpperCase();
+            const info = maestraByBpcs.get(bpcsVal) || {};
+            return {
+                'WHS': r['WHS'] || '',
+                'UBICACIÓN': r['UBICACIÓN'] || r['UBICACION'] || '',
+                'CÓDIGO': info.codigoCliente || '',
+                'CÓD. BPCS': r['CODIGO'] || '',
+                'EAN 13': info.ean13 || '',
+                'DESCRIPCIÓN': r['DESC'] || '',
+                'LOTE BPCS': r['LOTE BPCS'] || '',
+                'LOTE FÍSICO': r['LOTE FISICO'] || '',
+                'EXPIRA': formatFecha8(r['EXPIRA']),
+                'FAMILIA': r['FAMILIA'] || '',
+                'SALDO': parseFloat((r['SALDO']||'0').replace(/,/g,'')) || 0,
+                'ESTATUS': r['ESTATUS'] || ''
+            };
+        });
+        nombre = 'saldo'; hoja = 'Saldo';
+    }
     if (tipo === 'maestra')      { data = dataMaestra; nombre = 'maestra'; hoja = 'Maestra'; }
     if (tipo === 'bodegas')      { data = dataBodegas; nombre = 'bodegas'; hoja = 'Bodegas'; }
     if (tipo === 'ocupabilidad') { data = dataOcupabilidad; nombre = 'ocupabilidad'; hoja = 'Ocupabilidad'; }
@@ -809,6 +971,73 @@ async function cargarPlantillaSaldo(event) {
         aplicarFiltroSaldo();
     } catch (err) {
         alert('Error procesando el archivo: ' + err.message);
+    }
+}
+
+// =========================================================
+// WIDGET DASHBOARD — Ocupabilidad de hoy + botón Alimentar
+// (valores únicos de UBICACIÓN en la hoja de Saldo + piso fijo)
+// =========================================================
+function getUbicacionesOcupadasSaldo() {
+    const set = new Set();
+    dataSaldo.forEach(r => {
+        const ubic = (r['UBICACIÓN'] || r['UBICACION'] || '').trim().toUpperCase();
+        if (ubic) set.add(ubic);
+    });
+    return set;
+}
+function updateOcupabilidadWidget() {
+    const hoy = new Date();
+    document.getElementById('ocup-fecha-hoy').textContent = hoy.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    if (!dataSaldo.length) return;
+    const ocupadas = getUbicacionesOcupadasSaldo().size;
+    document.getElementById('ocup-total-val').textContent = ocupadas.toLocaleString('es-PE');
+}
+async function alimentarOcupabilidad() {
+    if (!APPS_SCRIPT_URL_OCUPABILIDAD) {
+        alert('Falta configurar APPS_SCRIPT_URL_OCUPABILIDAD en el código (constante al inicio del <script>).');
+        return;
+    }
+    const totalEl = document.getElementById('ocup-total-val');
+    if (totalEl.textContent === '—') {
+        alert('Aún no se pudo calcular el total (espera a que carguen los datos de Saldo) y vuelve a intentar.');
+        return;
+    }
+    const valor = Number(totalEl.textContent.replace(/,/g, ''));
+    const hoy = new Date();
+    const mes = hoy.getMonth() + 1, anio = hoy.getFullYear(), dia = hoy.getDate();
+
+    const btn = document.getElementById('btn-alimentar-ocupabilidad');
+    const msg = document.getElementById('ocup-msg');
+    const original = btn.innerHTML;
+    btn.innerHTML = '<span class="material-symbols-outlined spin text-[18px]">sync</span>Enviando...';
+    btn.style.pointerEvents = 'none';
+    msg.className = 'text-xs mt-2 text-on-surface-variant';
+    msg.textContent = '';
+
+    try {
+        const resp = await fetch(APPS_SCRIPT_URL_OCUPABILIDAD, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // evita preflight CORS
+            body: JSON.stringify({ token: UPLOAD_TOKEN, action: 'alimentarOcupabilidad', mes, anio, dia, valor })
+        });
+        const result = await resp.json();
+
+        if (!result.ok) {
+            msg.className = 'text-xs mt-2 text-error';
+            msg.textContent = 'No se pudo guardar: ' + (result.error || 'Error desconocido');
+            return;
+        }
+
+        msg.className = 'text-xs mt-2 text-green-700';
+        msg.textContent = `Guardado: día ${dia} = ${valor}. El Sheet puede tardar 1-2 min en reflejarlo.`;
+        setTimeout(async () => { await cargarOcupabilidad(true); renderOcupabilidad(); }, 3000);
+    } catch (e) {
+        msg.className = 'text-xs mt-2 text-error';
+        msg.textContent = 'Error de conexión: ' + e.message;
+    } finally {
+        btn.innerHTML = original;
+        btn.style.pointerEvents = '';
     }
 }
 
