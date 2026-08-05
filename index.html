@@ -402,7 +402,1069 @@ const URL_OCUPABILIDAD = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQMPc1
 const APPS_SCRIPT_URL_SALDO = 'https://script.google.com/macros/s/AKfycbyz9gFx_7IxsyB3Wp4uqiInLfmmjUW-z5b8-TdKs8uZGdYPbAfG_5YGbnqEUXk1xPpPNQ/exec';
 // URL del Apps Script (Extensiones > Apps Script en el Sheet de MAESTRA/BODEGAS/OCUPABILIDAD)
 // que recibe el valor del día y lo escribe en la pestaña OCUPABILIDAD. Pégala cuando la despliegues.
-const APPS_SCRIPT_URL_OCUPABILIDAD = 'https://script.google.com/macros/s/AKfycbyVOpABjYMcIA196eVTRF--iYTh4xhjJy_phAUV-hGjvlVXMrwZHLLAHSZvLJO8ZJ6g/exec';
+const APPS_SCRIPT_URL_OCUPABILIDAD = 'https://script.google.com/macros/s/AKfycbwvEVTXUagPtYHkzK9tremFTeFi19KOsXj9EpbdVMF4Hlk5Yi8aHkPj4YFDae5039-wHg/exec';
+// Debe coincidir EXACTAMENTE con la constante TOKEN de ambos Code.gs
+const UPLOAD_TOKEN = '2026';
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+const PAGE_SIZE = 200;           // filas que se pintan por tanda en Saldo
+
+// Estilos por código de bodega (coinciden con el catálogo BODEGAS)
+const BODEGA_STYLE = {
+    'LS': { chip: 'bg-primary-container text-secondary-fixed', cardBg: 'bg-primary-container text-on-primary', icon: 'inventory', iconBg: 'bg-secondary text-on-secondary', special: true },
+    'LT': { chip: 'bg-secondary-container text-on-secondary-container', cardBg: 'bg-surface-container-lowest border border-outline-variant', icon: 'verified_user', iconBg: 'bg-tertiary-container text-on-tertiary-container' },
+    'LM': { chip: 'bg-surface-container-highest text-on-surface-variant', cardBg: 'bg-surface-container-lowest border border-outline-variant', icon: 'visibility', iconBg: 'bg-secondary-container text-on-secondary-container' },
+    'DE': { chip: 'bg-error-container text-on-error-container', cardBg: 'bg-surface-container-lowest border border-outline-variant', icon: 'assignment_return', iconBg: 'bg-error-container text-on-error-container' },
+    'ME': { chip: 'bg-error-container text-on-error-container', cardBg: 'bg-surface-container-lowest border border-outline-variant', icon: 'delete_forever', iconBg: 'bg-error-container text-on-error-container' }
+};
+const DEFAULT_STYLE = { chip: 'bg-surface-container-highest text-on-surface-variant', cardBg: 'bg-surface-container-lowest border border-outline-variant', icon: 'category', iconBg: 'bg-secondary-container text-on-secondary-container' };
+
+// =========================================================
+// CACHÉ (sessionStorage)
+// =========================================================
+function cacheGet(key) {
+    try {
+        const raw = sessionStorage.getItem(key);
+        if (!raw) return null;
+        const { ts, data } = JSON.parse(raw);
+        if (Date.now() - ts > CACHE_TTL) { sessionStorage.removeItem(key); return null; }
+        return data;
+    } catch { return null; }
+}
+function cacheSet(key, data) {
+    try { sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch {}
+}
+
+async function fetchCSV(url, forceRefresh = false) {
+    const cacheKey = 'csv_' + btoa(url.split('gid=')[1] || url).slice(0, 16);
+    if (!forceRefresh) {
+        const cached = cacheGet(cacheKey);
+        if (cached) return cached;
+    }
+    const proxies = [
+        u => u + '&t=' + Date.now(),
+        u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+        u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+        u => `https://proxy.cors.sh/${u}`
+    ];
+    for (const buildUrl of proxies) {
+        try {
+            const r = await fetch(buildUrl(url), { signal: AbortSignal.timeout(12000) });
+            if (r.ok) {
+                const text = await r.text();
+                if (text && text.length > 5) { cacheSet(cacheKey, text); return text; }
+            }
+        } catch {}
+    }
+    throw new Error('No se pudo obtener los datos. Verifica tu conexión.');
+}
+
+// =========================================================
+// PARSEO CSV -> OBJETOS
+// =========================================================
+function parseCSV(text) {
+    const lines = text.replace(/^\uFEFF/, '').trim().split(/\r?\n/);
+    if (lines.length < 1) return { headers: [], rows: [] };
+    const parseRow = (line) => {
+        const result = []; let inQ = false, cur = '';
+        for (let i = 0; i < line.length; i++) {
+            if (line[i] === '"') { inQ = !inQ; }
+            else if (line[i] === ',' && !inQ) { result.push(cur.trim()); cur = ''; }
+            else { cur += line[i]; }
+        }
+        result.push(cur.trim());
+        return result;
+    };
+    const headers = parseRow(lines[0]);
+    const rows = lines.slice(1).map(l => parseRow(l));
+    return { headers, rows };
+}
+function toObjects(headers, rows) {
+    return rows.map(r => {
+        const obj = {};
+        headers.forEach((h, i) => obj[h.trim()] = (r[i] !== undefined ? r[i] : '').trim());
+        return obj;
+    }).filter(o => Object.values(o).some(v => v !== ''));
+}
+function colIndex(headers, name) {
+    return headers.findIndex(h => h.trim().toUpperCase() === name.toUpperCase());
+}
+
+// =========================================================
+// ESTADO GLOBAL
+// =========================================================
+let dataSaldo = [], dataMaestra = [], dataBodegas = [], dataOcupabilidad = [];
+let headersOcupabilidad = [];
+let saldoRenderCount = 0;
+let saldoFiltrado = [];
+let maestraByBpcs = new Map();   // CODIGO BPCS (upper) -> { codigoCliente, ean13 }
+let selectedSaldoIds = new Set(); // IDs SALDO seleccionados vía checkbox
+
+// Debounce genérico para no re-filtrar en cada tecla
+function debounce(fn, wait) {
+    let t;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); };
+}
+
+// =========================================================
+// FECHAS (formato AAAAMMDD, ej. 20281231)
+// =========================================================
+function parseFecha8(str) {
+    if (!str || !/^\d{8}$/.test(String(str).trim())) return null;
+    const s = String(str).trim();
+    const y = +s.slice(0,4), m = +s.slice(4,6), d = +s.slice(6,8);
+    const dt = new Date(y, m - 1, d);
+    if (isNaN(dt.getTime())) return null;
+    return dt;
+}
+function formatFecha8(str) {
+    const dt = parseFecha8(str);
+    if (!dt) return str || '';
+    return `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}/${dt.getFullYear()}`;
+}
+function mesesParaVencer(str) {
+    const dt = parseFecha8(str);
+    if (!dt) return null;
+    const hoy = new Date();
+    const dias = Math.round((dt - hoy) / 86400000);
+    return { dias, meses: Math.round(dias / 30) };
+}
+function badgeVencimiento(str) {
+    const info = mesesParaVencer(str);
+    if (!info) return '<span class="text-on-surface-variant text-xs">—</span>';
+    if (info.dias < 0) return '<span class="bg-error text-on-error px-2 py-0.5 rounded text-[10px] font-bold">VENCIDO</span>';
+    if (info.dias <= 60) return `<span class="bg-error-container text-error px-2 py-0.5 rounded text-[10px] font-bold">${info.meses} MO</span>`;
+    return `<span class="text-on-surface-variant font-bold">${info.meses}</span>`;
+}
+
+// =========================================================
+// CARGA DE DATOS
+// =========================================================
+async function cargarSaldo(force = false) {
+    const text = await fetchCSV(URL_SALDO, force);
+    const { headers, rows } = parseCSV(text);
+    dataSaldo = toObjects(headers, rows);
+}
+async function cargarMaestra(force = false) {
+    const text = await fetchCSV(URL_MAESTRA, force);
+    const { headers, rows } = parseCSV(text);
+    dataMaestra = toObjects(headers, rows);
+}
+async function cargarBodegas(force = false) {
+    const text = await fetchCSV(URL_BODEGAS, force);
+    const { headers, rows } = parseCSV(text);
+    dataBodegas = toObjects(headers, rows);
+}
+async function cargarOcupabilidad(force = false) {
+    const text = await fetchCSV(URL_OCUPABILIDAD, force);
+    const { headers, rows } = parseCSV(text);
+    headersOcupabilidad = headers;
+    dataOcupabilidad = toObjects(headers, rows);
+}
+
+async function cargarTodo(force = false) {
+    const icon = document.getElementById('icon-refresh-all');
+    const iconHeader = document.getElementById('icon-refresh-header');
+    icon.classList.add('spin');
+    iconHeader.classList.add('spin');
+    try {
+        await Promise.all([cargarSaldo(force), cargarMaestra(force), cargarBodegas(force), cargarOcupabilidad(force)]);
+        buildMaestraIndex();
+        renderBodegas();
+        renderResumen();
+        renderKPIsDashboard();
+        poblarFiltroWHS();
+        aplicarFiltroSaldo();
+        renderMaestra();
+        renderOcupabilidad();
+        updateOcupabilidadWidget();
+        const horaActual = new Date().toLocaleTimeString('es-PE');
+        document.getElementById('last-updated').textContent = 'Actualizado: ' + horaActual;
+        document.getElementById('saldo-updated-label').textContent = 'Última carga: ' + horaActual;
+        document.getElementById('dashboard-updated-label').textContent = 'Última carga: ' + horaActual;
+    } catch (err) {
+        alert('Error cargando datos: ' + err.message);
+    } finally {
+        icon.classList.remove('spin');
+        iconHeader.classList.remove('spin');
+    }
+}
+function forceReloadAll() { cargarTodo(true); }
+
+// =========================================================
+// CRUCE SALDO <-> MAESTRA (por CÓDIGO BPCS)
+// El "CODIGO" que trae la hoja de Saldo corresponde al campo
+// "CODIGO BPCS" de la Maestra, no al "CODIGO" (cliente) de la Maestra.
+// =========================================================
+function buildMaestraIndex() {
+    maestraByBpcs = new Map();
+    dataMaestra.forEach(m => {
+        const bpcs = String(m['CODIGO BPCS'] || '').trim().toUpperCase();
+        if (!bpcs) return;
+        maestraByBpcs.set(bpcs, {
+            codigoCliente: m['CODIGO'] || '',
+            ean13: m['EAN 13'] || ''
+        });
+    });
+}
+function poblarFiltroWHS() {
+    const sel = document.getElementById('filtro-whs');
+    const actual = sel.value;
+    sel.innerHTML = '<option value="">Todas</option>';
+    dataBodegas.forEach(b => {
+        const codigo = b['BODEGA'] || '';
+        if (!codigo) return;
+        const opt = document.createElement('option');
+        opt.value = codigo;
+        opt.textContent = codigo;
+        sel.appendChild(opt);
+    });
+    sel.value = actual;
+}
+
+// =========================================================
+// RESUMEN POR BODEGA (tarjetas dinámicas)
+// =========================================================
+function renderResumen() {
+    const cont = document.getElementById('cards-resumen');
+    cont.innerHTML = '';
+    if (!dataBodegas.length) return;
+
+    dataBodegas.forEach(b => {
+        const codigo = b['BODEGA'] || '';
+        const desc = b['DESCRIPCION BODEGA'] || '';
+        const st = BODEGA_STYLE[codigo] || DEFAULT_STYLE;
+        const filas = dataSaldo.filter(r => (r['WHS'] || '').toUpperCase() === codigo.toUpperCase());
+        const unidades = filas.reduce((sum, r) => sum + (parseFloat((r['SALDO']||'0').replace(/,/g,'')) || 0), 0);
+        const codigosUnicos = new Set(filas.map(r => r['CODIGO'])).size;
+        const ubicacionesUnicas = new Set(filas.map(r => r['UBICACIÓN'] || r['UBICACION'])).size;
+
+        const textClass = st.special ? 'text-on-primary-container' : 'text-on-surface-variant';
+        const valClass = st.special ? 'text-white' : 'text-on-surface';
+
+        const card = document.createElement('div');
+        card.className = `${st.cardBg} rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow`;
+        card.innerHTML = `
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <span class="font-data-mono font-bold text-lg ${st.special ? 'text-secondary-fixed' : 'text-primary'}">${codigo}</span>
+                    <div class="text-xs ${textClass} font-medium uppercase tracking-tight">${desc}</div>
+                </div>
+                <div class="p-2 ${st.iconBg} rounded-lg">
+                    <span class="material-symbols-outlined">${st.icon}</span>
+                </div>
+            </div>
+            <div class="space-y-3">
+                <div class="flex justify-between items-end border-b border-surface-variant/50 pb-2">
+                    <span class="text-xs ${textClass}">Unidades</span>
+                    <span class="font-bold ${valClass}">${unidades.toLocaleString('es-PE')}</span>
+                </div>
+                <div class="flex justify-between items-end border-b border-surface-variant/50 pb-2">
+                    <span class="text-xs ${textClass}">Códigos</span>
+                    <span class="font-bold ${valClass}">${codigosUnicos.toLocaleString('es-PE')}</span>
+                </div>
+                <div class="flex justify-between items-end">
+                    <span class="text-xs ${textClass}">Ubicaciones</span>
+                    <span class="font-bold ${valClass}">${ubicacionesUnicas.toLocaleString('es-PE')}</span>
+                </div>
+            </div>`;
+        cont.appendChild(card);
+    });
+}
+
+// =========================================================
+// KPIs GENERALES DEL DASHBOARD
+// =========================================================
+function renderKPIsDashboard() {
+    const stockTotal = dataSaldo.reduce((sum, r) => sum + (parseFloat((r['SALDO']||'0').replace(/,/g,'')) || 0), 0);
+    const codigosSaldo = new Set(dataSaldo.map(r => r['CODIGO'])).size;
+    const maestraTotal = dataMaestra.length;
+    const porVencer = dataSaldo.filter(r => {
+        const info = mesesParaVencer(r['EXPIRA']);
+        return info && info.dias >= 0 && info.dias <= 90;
+    }).length;
+
+    document.getElementById('kpi-stock-total').textContent = stockTotal.toLocaleString('es-PE');
+    document.getElementById('kpi-codigos-saldo').textContent = codigosSaldo.toLocaleString('es-PE');
+    document.getElementById('kpi-maestra-total').textContent = maestraTotal.toLocaleString('es-PE');
+    document.getElementById('kpi-por-vencer').textContent = porVencer.toLocaleString('es-PE');
+}
+
+// =========================================================
+// TABLA SALDO (búsqueda global + filtros específicos + carga por tandas)
+// =========================================================
+function aplicarFiltroSaldo() {
+    const q     = (document.getElementById('global-search').value || '').trim().toUpperCase();
+    const fWhs  = (document.getElementById('filtro-whs').value || '').trim().toUpperCase();
+    const fUbic = (document.getElementById('filtro-ubicacion').value || '').trim().toUpperCase();
+    const fCod  = (document.getElementById('filtro-codigo').value || '').trim().toUpperCase();
+    const fBpcs = (document.getElementById('filtro-codigo-bpcs').value || '').trim().toUpperCase();
+    const fEan  = (document.getElementById('filtro-ean').value || '').trim().toUpperCase();
+
+    saldoFiltrado = dataSaldo.filter(r => {
+        if (q && !Object.values(r).some(v => String(v).toUpperCase().includes(q))) return false;
+        if (fWhs && (r['WHS'] || '').toUpperCase() !== fWhs) return false;
+        const ubic = (r['UBICACIÓN'] || r['UBICACION'] || '').toUpperCase();
+        if (fUbic && !ubic.includes(fUbic)) return false;
+        const bpcsVal = (r['CODIGO'] || '').toUpperCase();
+        if (fBpcs && !bpcsVal.includes(fBpcs)) return false;
+        const info = maestraByBpcs.get(bpcsVal) || {};
+        if (fCod && !String(info.codigoCliente || '').toUpperCase().includes(fCod)) return false;
+        if (fEan && !String(info.ean13 || '').toUpperCase().includes(fEan)) return false;
+        return true;
+    });
+    saldoRenderCount = 0;
+    document.getElementById('tbody-saldo').innerHTML = '';
+    renderChunkSaldo();
+}
+const aplicarFiltroSaldoDebounced = debounce(aplicarFiltroSaldo, 300);
+
+function limpiarFiltrosSaldo() {
+    ['filtro-whs','filtro-ubicacion','filtro-codigo','filtro-codigo-bpcs','filtro-ean'].forEach(id => {
+        document.getElementById(id).value = '';
+    });
+    document.getElementById('global-search').value = '';
+    aplicarFiltroSaldo();
+}
+
+function renderChunkSaldo() {
+    const tbody = document.getElementById('tbody-saldo');
+    const slice = saldoFiltrado.slice(saldoRenderCount, saldoRenderCount + PAGE_SIZE);
+    const frag = document.createDocumentFragment();
+    slice.forEach((r, i) => {
+        const whs = r['WHS'] || '';
+        const st = BODEGA_STYLE[whs.toUpperCase()] || DEFAULT_STYLE;
+        const saldoNum = parseFloat((r['SALDO']||'0').replace(/,/g,'')) || 0;
+        const id = r['ID SALDO'] || '';
+        const bpcsVal = (r['CODIGO'] || '').toUpperCase();
+        const info = maestraByBpcs.get(bpcsVal) || {};
+        const checked = selectedSaldoIds.has(id) ? 'checked' : '';
+        const tr = document.createElement('tr');
+        tr.className = (saldoRenderCount + i) % 2 ? '' : 'bg-surface-container-low/30';
+        tr.className += ' hover:bg-surface-variant/10 transition-colors';
+        tr.innerHTML = `
+            <td class="px-4 py-2"><input type="checkbox" class="chk-saldo-row" data-id="${id}" ${checked} onclick="toggleSaldoRow('${id}', this.checked)"></td>
+            <td class="px-4 py-2 text-center"><span class="${st.chip} px-2 py-0.5 rounded text-[11px] font-bold font-data-mono">${whs}</span></td>
+            <td class="px-4 py-2 font-data-mono">${r['UBICACIÓN'] || r['UBICACION'] || ''}</td>
+            <td class="px-4 py-2 font-data-mono">${info.codigoCliente || ''}</td>
+            <td class="px-4 py-2 font-data-mono">${r['CODIGO'] || ''}</td>
+            <td class="px-4 py-2 font-data-mono">${info.ean13 || ''}</td>
+            <td class="px-4 py-2">${r['DESC'] || ''}</td>
+            <td class="px-4 py-2 font-data-mono">${r['LOTE BPCS'] || ''}</td>
+            <td class="px-4 py-2 font-data-mono">${r['LOTE FISICO'] || ''}</td>
+            <td class="px-4 py-2 font-data-mono">${formatFecha8(r['EXPIRA'])}</td>
+            <td class="px-4 py-2 text-center">${badgeVencimiento(r['EXPIRA'])}</td>
+            <td class="px-4 py-2 text-xs uppercase tracking-wider text-on-secondary-container font-medium">${r['FAMILIA'] || ''}</td>
+            <td class="px-4 py-2 text-right font-bold text-on-surface">${saldoNum.toLocaleString('es-PE')}</td>
+            <td class="px-4 py-2 uppercase">${r['ESTATUS'] || ''}</td>`;
+        frag.appendChild(tr);
+    });
+    tbody.appendChild(frag);
+    saldoRenderCount += slice.length;
+
+    actualizarEtiquetaConteoSaldo();
+    document.getElementById('btn-cargar-mas-saldo').classList.toggle('hidden', saldoRenderCount >= saldoFiltrado.length);
+    document.getElementById('chk-all-saldo').checked = false;
+}
+function cargarMasSaldo() { renderChunkSaldo(); }
+
+function actualizarEtiquetaConteoSaldo() {
+    const base = `Mostrando ${saldoRenderCount.toLocaleString('es-PE')} de ${saldoFiltrado.length.toLocaleString('es-PE')} registros`;
+    const sel = selectedSaldoIds.size ? ` • ${selectedSaldoIds.size.toLocaleString('es-PE')} seleccionados` : '';
+    document.getElementById('saldo-count-label').textContent = base + sel;
+}
+
+function toggleSaldoRow(id, checked) {
+    if (checked) selectedSaldoIds.add(id); else selectedSaldoIds.delete(id);
+    actualizarEtiquetaConteoSaldo();
+}
+function toggleSaldoAll(checked) {
+    document.querySelectorAll('#tbody-saldo .chk-saldo-row').forEach(chk => {
+        chk.checked = checked;
+        const id = chk.dataset.id;
+        if (checked) selectedSaldoIds.add(id); else selectedSaldoIds.delete(id);
+    });
+    actualizarEtiquetaConteoSaldo();
+}
+
+// =========================================================
+// TABLA BODEGAS
+// =========================================================
+function renderBodegas() {
+    const tbody = document.getElementById('tbody-bodegas');
+    tbody.innerHTML = '';
+    dataBodegas.forEach(b => {
+        const codigo = b['BODEGA'] || '';
+        const st = BODEGA_STYLE[codigo] || DEFAULT_STYLE;
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-surface-variant/10 transition-colors';
+        tr.innerHTML = `
+            <td class="px-4 py-3"><span class="${st.chip} px-2 py-0.5 rounded text-[11px] font-bold font-data-mono">${codigo}</span></td>
+            <td class="px-4 py-3">${b['DESCRIPCION BODEGA'] || ''}</td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+// =========================================================
+// TABLA MAESTRA
+// =========================================================
+function renderMaestra() {
+    const q = (document.getElementById('global-search').value || '').trim().toUpperCase();
+    const lista = !q ? dataMaestra : dataMaestra.filter(r => Object.values(r).some(v => String(v).toUpperCase().includes(q)));
+    const tbody = document.getElementById('tbody-maestra');
+    tbody.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    lista.forEach((r, i) => {
+        const tr = document.createElement('tr');
+        tr.className = (i % 2 ? '' : 'bg-surface-container-low/30') + ' hover:bg-surface-variant/10 transition-colors';
+        tr.innerHTML = `
+            <td class="px-4 py-2 font-data-mono">${r['CODIGO'] || ''}</td>
+            <td class="px-4 py-2 font-data-mono">${r['CODIGO BPCS'] || ''}</td>
+            <td class="px-4 py-2">${r['DESCRIPCCION'] || r['DESCRIPCION'] || ''}</td>
+            <td class="px-4 py-2 font-data-mono">${r['EAN 13'] || ''}</td>
+            <td class="px-4 py-2 font-data-mono">${r['EAN 14'] || ''}</td>
+            <td class="px-4 py-2">${r['MARCA'] || ''}</td>
+            <td class="px-4 py-2 text-center font-data-mono">${r['UUxEMP'] || ''}</td>
+            <td class="px-4 py-2 text-center font-data-mono">${r['BASE'] || ''}</td>
+            <td class="px-4 py-2 text-center font-data-mono">${r['ALTURA'] || ''}</td>
+            <td class="px-4 py-2 text-center font-data-mono">${r['UUxPALET'] || ''}</td>`;
+        frag.appendChild(tr);
+    });
+    tbody.appendChild(frag);
+    document.getElementById('maestra-count-label').textContent = `${lista.length.toLocaleString('es-PE')} artículos`;
+}
+
+// =========================================================
+// TABLA OCUPABILIDAD (cabecera dinámica: Mes, 1..31, Max, Min, Prom)
+// =========================================================
+function renderOcupabilidad() {
+    const thead = document.getElementById('thead-ocupabilidad');
+    const tbody = document.getElementById('tbody-ocupabilidad');
+    thead.innerHTML = '';
+    tbody.innerHTML = '';
+    if (!headersOcupabilidad.length) return;
+
+    headersOcupabilidad.forEach(h => {
+        const th = document.createElement('th');
+        th.className = 'px-3 py-3 border-b border-outline-variant text-center whitespace-nowrap';
+        th.textContent = h;
+        thead.appendChild(th);
+    });
+
+    dataOcupabilidad.forEach((row, i) => {
+        const tr = document.createElement('tr');
+        tr.className = (i % 2 ? '' : 'bg-surface-container-low/30') + ' hover:bg-surface-variant/10 transition-colors';
+        headersOcupabilidad.forEach(h => {
+            const td = document.createElement('td');
+            const esMes = h.trim().toUpperCase() === 'MES';
+            td.className = 'px-3 py-2 font-data-mono text-center' + (esMes ? ' text-left font-bold uppercase' : '');
+            td.textContent = row[h] || '';
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+}
+
+// =========================================================
+// BÚSQUEDA GLOBAL (aplica a la sección activa)
+// =========================================================
+function onSearch() {
+    const activa = document.querySelector('.section-view.active').id;
+    if (activa === 'view-saldo') aplicarFiltroSaldo();
+    if (activa === 'view-maestra') renderMaestra();
+}
+
+// =========================================================
+// NAVEGACIÓN ENTRE SECCIONES
+// =========================================================
+const TITLES = { dashboard: 'Resumen Ejecutivo', saldo: 'Consulta de Saldo', bodegas: 'Catálogo de Bodegas', maestra: 'Maestra de Artículos', ocupabilidad: 'Ocupabilidad' };
+const NAV_ACTIVE_CLASSES   = ['active', 'bg-secondary-container', 'text-on-secondary-container', 'font-bold'];
+const NAV_INACTIVE_CLASSES = ['text-on-primary-container', 'hover:bg-surface-variant/20'];
+
+document.getElementById('side-nav').addEventListener('click', (e) => {
+    const link = e.target.closest('[data-section]');
+    if (!link) return;
+    document.querySelectorAll('.nav-link').forEach(a => {
+        a.classList.remove(...NAV_ACTIVE_CLASSES, ...NAV_INACTIVE_CLASSES);
+        a.classList.add(...NAV_INACTIVE_CLASSES);
+    });
+    link.classList.remove(...NAV_INACTIVE_CLASSES);
+    link.classList.add(...NAV_ACTIVE_CLASSES);
+    const section = link.dataset.section;
+    document.querySelectorAll('.section-view').forEach(v => v.classList.remove('active'));
+    document.getElementById('view-' + section).classList.add('active');
+    document.getElementById('section-title').textContent = TITLES[section];
+    document.getElementById('global-search').value = '';
+});
+
+// =========================================================
+// EXPORTAR XLSX
+// =========================================================
+function exportarXLSX(tipo) {
+    let data, nombre, hoja;
+    if (tipo === 'saldo') {
+        const base = selectedSaldoIds.size
+            ? dataSaldo.filter(r => selectedSaldoIds.has(r['ID SALDO']))
+            : (saldoFiltrado.length ? saldoFiltrado : dataSaldo);
+        data = base.map(r => {
+            const bpcsVal = (r['CODIGO'] || '').toUpperCase();
+            const info = maestraByBpcs.get(bpcsVal) || {};
+            return {
+                'WHS': r['WHS'] || '',
+                'UBICACIÓN': r['UBICACIÓN'] || r['UBICACION'] || '',
+                'CÓDIGO': info.codigoCliente || '',
+                'CÓD. BPCS': r['CODIGO'] || '',
+                'EAN 13': info.ean13 || '',
+                'DESCRIPCIÓN': r['DESC'] || '',
+                'LOTE BPCS': r['LOTE BPCS'] || '',
+                'LOTE FÍSICO': r['LOTE FISICO'] || '',
+                'EXPIRA': formatFecha8(r['EXPIRA']),
+                'FAMILIA': r['FAMILIA'] || '',
+                'SALDO': parseFloat((r['SALDO']||'0').replace(/,/g,'')) || 0,
+                'ESTATUS': r['ESTATUS'] || ''
+            };
+        });
+        nombre = 'saldo'; hoja = 'Saldo';
+    }
+    if (tipo === 'maestra')      { data = dataMaestra; nombre = 'maestra'; hoja = 'Maestra'; }
+    if (tipo === 'bodegas')      { data = dataBodegas; nombre = 'bodegas'; hoja = 'Bodegas'; }
+    if (tipo === 'ocupabilidad') { data = dataOcupabilidad; nombre = 'ocupabilidad'; hoja = 'Ocupabilidad'; }
+    if (!data || !data.length) { alert('No hay datos para exportar.'); return; }
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, hoja);
+    const fecha = new Date().toISOString().slice(0,10).replace(/-/g,'');
+    XLSX.writeFile(wb, `${nombre}_${fecha}.xlsx`);
+}
+
+// =========================================================
+// PLANTILLA SALDO (descargar vacía / importar y actualizar)
+// =========================================================
+function descargarPlantillaSaldo() {
+    const headers = ['ID SALDO','WHS','UBICACIÓN','CODIGO','DESC','LOTE BPCS','LOTE FISICO','EXPIRA','FAMILIA','SALDO'];
+    const ws = XLSX.utils.aoa_to_sheet([headers]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Plantilla Saldo');
+    const fecha = new Date().toISOString().slice(0,10).replace(/-/g,'');
+    XLSX.writeFile(wb, `plantilla_saldo_${fecha}.xlsx`);
+}
+
+async function cargarPlantillaSaldo(event) {
+    const file = event.target.files[0];
+    event.target.value = '';
+    if (!file) return;
+
+    if (!APPS_SCRIPT_URL_SALDO) {
+        alert('Falta configurar APPS_SCRIPT_URL_SALDO en el código (constante al inicio del <script>). Revisa las instrucciones del Code.gs adjunto.');
+        return;
+    }
+
+    try {
+        const buffer = await file.arrayBuffer();
+        const wb = XLSX.read(buffer, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+        if (!aoa.length) { alert('El archivo está vacío.'); return; }
+
+        const headers = aoa[0].map(h => String(h).trim());
+        const rows = aoa.slice(1).filter(r => r.some(c => String(c).trim() !== ''));
+
+        if (!confirm(`Se reemplazará TODA la hoja SALDO con ${rows.length} filas nuevas. ¿Continuar?`)) return;
+
+        const resp = await fetch(APPS_SCRIPT_URL_SALDO, {
+            method: 'POST',
+            body: JSON.stringify({ token: UPLOAD_TOKEN, headers, rows })
+        });
+        const result = await resp.json();
+        if (!result.ok) { alert('Error: ' + result.error); return; }
+
+        alert(`Listo. Se actualizaron ${result.filas} filas en el Sheet.`);
+        await cargarSaldo(true);
+        renderResumen();
+        aplicarFiltroSaldo();
+    } catch (err) {
+        alert('Error procesando el archivo: ' + err.message);
+    }
+}
+
+// =========================================================
+// WIDGET DASHBOARD — Ocupabilidad de hoy + botón Alimentar
+// (valores únicos de UBICACIÓN en la hoja de Saldo + piso fijo)
+// =========================================================
+function getUbicacionesOcupadasSaldo() {
+    const set = new Set();
+    dataSaldo.forEach(r => {
+        const ubic = (r['UBICACIÓN'] || r['UBICACION'] || '').trim().toUpperCase();
+        if (ubic) set.add(ubic);
+    });
+    return set;
+}
+function updateOcupabilidadWidget() {
+    const hoy = new Date();
+    document.getElementById('ocup-fecha-hoy').textContent = hoy.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    if (!dataSaldo.length) return;
+    const ocupadas = getUbicacionesOcupadasSaldo().size;
+    document.getElementById('ocup-total-val').textContent = ocupadas.toLocaleString('es-PE');
+}
+async function alimentarOcupabilidad() {
+    if (!APPS_SCRIPT_URL_OCUPABILIDAD) {
+        alert('Falta configurar APPS_SCRIPT_URL_OCUPABILIDAD en el código (constante al inicio del <script>).');
+        return;
+    }
+    const totalEl = document.getElementById('ocup-total-val');
+    if (totalEl.textContent === '—') {
+        alert('Aún no se pudo calcular el total (espera a que carguen los datos de Saldo) y vuelve a intentar.');
+        return;
+    }
+    const valor = Number(totalEl.textContent.replace(/,/g, ''));
+    const hoy = new Date();
+    const mes = hoy.getMonth() + 1, anio = hoy.getFullYear(), dia = hoy.getDate();
+
+    const btn = document.getElementById('btn-alimentar-ocupabilidad');
+    const msg = document.getElementById('ocup-msg');
+    const original = btn.innerHTML;
+    btn.innerHTML = '<span class="material-symbols-outlined spin text-[18px]">sync</span>Enviando...';
+    btn.style.pointerEvents = 'none';
+    msg.className = 'text-xs mt-2 text-on-surface-variant';
+    msg.textContent = '';
+
+    try {
+        const resp = await fetch(APPS_SCRIPT_URL_OCUPABILIDAD, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // evita preflight CORS
+            body: JSON.stringify({ token: UPLOAD_TOKEN, action: 'alimentarOcupabilidad', mes, anio, dia, valor })
+        });
+        const result = await resp.json();
+
+        if (!result.ok) {
+            msg.className = 'text-xs mt-2 text-error';
+            msg.textContent = 'No se pudo guardar: ' + (result.error || 'Error desconocido');
+            return;
+        }
+
+        msg.className = 'text-xs mt-2 text-green-700';
+        msg.textContent = `Guardado: día ${dia} = ${valor}. El Sheet puede tardar 1-2 min en reflejarlo.`;
+        setTimeout(async () => { await cargarOcupabilidad(true); renderOcupabilidad(); }, 3000);
+    } catch (e) {
+        msg.className = 'text-xs mt-2 text-error';
+        msg.textContent = 'Error de conexión: ' + e.message;
+    } finally {
+        btn.innerHTML = original;
+        btn.style.pointerEvents = '';
+    }
+}
+
+// =========================================================
+// INICIO
+// =========================================================
+cargarTodo(false);
+</script>
+</body></html>
+<!DOCTYPE html><html class="light" lang="es" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Inventario GLIMMER - Consulta de Saldo</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Hanken+Grotesk:wght@600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- SheetJS (leer/escribir Excel) -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+        darkMode: "class",
+        theme: {
+            extend: {
+                "colors": {
+                    "inverse-primary": "#bec6e0",
+                    "on-primary-fixed-variant": "#3f465c",
+                    "tertiary": "#000000",
+                    "primary": "#000000",
+                    "error": "#ba1a1a",
+                    "surface-container-highest": "#e0e3e5",
+                    "on-surface-variant": "#45464d",
+                    "primary-container": "#131b2e",
+                    "on-tertiary-fixed-variant": "#3a485c",
+                    "outline-variant": "#c6c6cd",
+                    "inverse-surface": "#2d3133",
+                    "on-secondary-container": "#57657a",
+                    "secondary": "#515f74",
+                    "surface-variant": "#e0e3e5",
+                    "inverse-on-surface": "#eff1f3",
+                    "surface-container-lowest": "#ffffff",
+                    "on-error-container": "#93000a",
+                    "surface-container": "#eceef0",
+                    "on-secondary-fixed": "#0d1c2e",
+                    "surface-container-low": "#f2f4f6",
+                    "tertiary-container": "#0d1c2f",
+                    "on-primary": "#ffffff",
+                    "on-tertiary-fixed": "#0d1c2f",
+                    "outline": "#76777d",
+                    "surface": "#f7f9fb",
+                    "on-secondary-fixed-variant": "#3a485b",
+                    "surface-dim": "#d8dadc",
+                    "error-container": "#ffdad6",
+                    "on-primary-container": "#7c839b",
+                    "tertiary-fixed": "#d5e3fd",
+                    "surface-tint": "#565e74",
+                    "on-surface": "#191c1e",
+                    "primary-fixed-dim": "#bec6e0",
+                    "on-secondary": "#ffffff",
+                    "surface-bright": "#f7f9fb",
+                    "secondary-container": "#d5e3fc",
+                    "surface-container-high": "#e6e8ea",
+                    "tertiary-fixed-dim": "#b9c7e0",
+                    "secondary-fixed-dim": "#b9c7df",
+                    "primary-fixed": "#dae2fd",
+                    "on-tertiary-container": "#76859b",
+                    "on-tertiary": "#ffffff",
+                    "background": "#f7f9fb",
+                    "on-error": "#ffffff",
+                    "secondary-fixed": "#d5e3fc",
+                    "on-primary-fixed": "#131b2e",
+                    "on-background": "#191c1e"
+                },
+                "borderRadius": { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" },
+                "fontFamily": {
+                    "body-lg": ["Inter"], "label-sm": ["Inter"], "headline-sm": ["Hanken Grotesk"],
+                    "data-mono": ["JetBrains Mono"], "headline-md": ["Hanken Grotesk"], "table-header": ["Hanken Grotesk"],
+                    "headline-lg": ["Hanken Grotesk"], "body-md": ["Inter"]
+                },
+                "fontSize": {
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "label-sm": ["11px", {"lineHeight": "14px", "fontWeight": "600"}],
+                    "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "data-mono": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "table-header": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "700"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}]
+                }
+            }
+        }
+    }
+</script>
+<style>
+    .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .table-sticky-col { position: sticky; left: 0; z-index: 10; background: inherit; }
+    .data-cell { padding: 8px 12px; }
+    .nav-link.active { background: var(--tw-color-secondary-container, #d5e3fc); }
+    .section-view { display: none; }
+    .section-view.active { display: flex; flex-direction: column; }
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+</style>
+</head>
+<body class="bg-background font-body-md text-on-background antialiased overflow-hidden">
+<div class="flex h-screen overflow-hidden">
+
+<!-- ===================== SIDEBAR ===================== -->
+<aside class="bg-primary-container h-screen w-64 fixed left-0 top-0 border-r border-outline-variant flex flex-col z-50 shadow-sm">
+<div class="p-6">
+<div class="text-headline-md font-headline-md font-bold text-on-primary-container mb-1">Inventario GLIMMER</div>
+<div class="text-on-primary-container/60 text-xs tracking-wider uppercase">Cliente - 254</div>
+</div>
+<nav class="flex-1 px-4 space-y-1" id="side-nav">
+<a data-section="dashboard" class="nav-link active bg-secondary-container text-on-secondary-container rounded-lg px-4 py-3 font-bold flex items-center gap-3 transition-all cursor-pointer">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a data-section="saldo" class="nav-link text-on-primary-container hover:bg-surface-variant/20 rounded-lg px-4 py-3 flex items-center gap-3 transition-colors cursor-pointer">
+<span class="material-symbols-outlined">inventory_2</span>
+<span>Saldo</span>
+</a>
+<a data-section="bodegas" class="nav-link text-on-primary-container hover:bg-surface-variant/20 rounded-lg px-4 py-3 flex items-center gap-3 transition-colors cursor-pointer">
+<span class="material-symbols-outlined">warehouse</span>
+<span>Bodegas</span>
+</a>
+<a data-section="maestra" class="nav-link text-on-primary-container hover:bg-surface-variant/20 rounded-lg px-4 py-3 flex items-center gap-3 transition-colors cursor-pointer">
+<span class="material-symbols-outlined">category</span>
+<span>Maestra de Artículos</span>
+</a>
+<a data-section="ocupabilidad" class="nav-link text-on-primary-container hover:bg-surface-variant/20 rounded-lg px-4 py-3 flex items-center gap-3 transition-colors cursor-pointer">
+<span class="material-symbols-outlined">analytics</span>
+<span>Ocupabilidad</span>
+</a>
+</nav>
+<div class="p-4 border-t border-on-primary-fixed-variant space-y-3">
+<button onclick="forceReloadAll()" id="btn-refresh-all" class="w-full bg-primary text-on-primary py-2 rounded-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform">
+<span class="material-symbols-outlined" id="icon-refresh-all">sync</span>
+                Actualizar Datos
+            </button>
+<div class="text-on-primary-container/60 text-[11px] text-center" id="last-updated">Sin cargar aún</div>
+</div>
+</aside>
+
+<!-- ===================== MAIN ===================== -->
+<main class="ml-64 flex-1 flex flex-col h-screen relative overflow-y-auto">
+<header class="bg-surface sticky top-0 right-0 w-full z-40 border-b border-outline-variant h-16 px-6 flex justify-between items-center">
+<div class="flex items-center gap-6">
+<h1 class="font-headline-sm text-headline-sm font-bold text-primary" id="section-title">Resumen Ejecutivo</h1>
+<div class="relative group">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input id="global-search" oninput="onSearch()" class="pl-10 pr-4 py-2 bg-surface-container-low border border-outline-variant rounded-full text-body-md w-80 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all" placeholder="Buscar código, lote, ubicación..." type="text">
+</div>
+</div>
+<button onclick="forceReloadAll()" class="flex items-center gap-2 px-4 py-2 border border-outline-variant rounded-full text-sm font-bold hover:bg-surface-variant/10 active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-[18px]" id="icon-refresh-header">sync</span>Actualizar
+</button>
+</header>
+
+<div class="p-6 space-y-6 w-full flex-1 flex flex-col">
+
+<!-- ================= SECCIÓN DASHBOARD ================= -->
+<div id="view-dashboard" class="section-view active flex-1 space-y-6">
+<section>
+<div class="flex items-center justify-between mb-4">
+<h2 class="font-headline-md text-headline-md text-on-surface">Resumen Ejecutivo</h2>
+<span class="text-body-md text-on-surface-variant" id="dashboard-updated-label">—</span>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 shadow-sm">
+<div class="flex justify-between items-start mb-3">
+<div class="p-2 bg-secondary-container text-on-secondary-container rounded-lg"><span class="material-symbols-outlined">inventory</span></div>
+</div>
+<div class="text-xs text-on-surface-variant font-medium uppercase tracking-tight mb-1">Stock Total</div>
+<div class="text-headline-lg font-headline-lg text-on-surface" id="kpi-stock-total">—</div>
+<div class="text-xs text-on-surface-variant mt-1">Unidades en todas las bodegas</div>
+</div>
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 shadow-sm">
+<div class="flex justify-between items-start mb-3">
+<div class="p-2 bg-primary-container text-on-primary-container rounded-lg"><span class="material-symbols-outlined">qr_code_2</span></div>
+</div>
+<div class="text-xs text-on-surface-variant font-medium uppercase tracking-tight mb-1">Códigos en Saldo</div>
+<div class="text-headline-lg font-headline-lg text-on-surface" id="kpi-codigos-saldo">—</div>
+<div class="text-xs text-on-surface-variant mt-1">SKUs distintos con existencia</div>
+</div>
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 shadow-sm">
+<div class="flex justify-between items-start mb-3">
+<div class="p-2 bg-tertiary-container text-on-tertiary-container rounded-lg"><span class="material-symbols-outlined">category</span></div>
+</div>
+<div class="text-xs text-on-surface-variant font-medium uppercase tracking-tight mb-1">Artículos en Maestra</div>
+<div class="text-headline-lg font-headline-lg text-on-surface" id="kpi-maestra-total">—</div>
+<div class="text-xs text-on-surface-variant mt-1">Catálogo completo</div>
+</div>
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 shadow-sm">
+<div class="flex justify-between items-start mb-3">
+<div class="p-2 bg-error-container text-on-error-container rounded-lg"><span class="material-symbols-outlined">warning</span></div>
+</div>
+<div class="text-xs text-on-surface-variant font-medium uppercase tracking-tight mb-1">Próx. a Vencer (≤90d)</div>
+<div class="text-headline-lg font-headline-lg text-error" id="kpi-por-vencer">—</div>
+<div class="text-xs text-on-surface-variant mt-1">Requieren atención</div>
+</div>
+</div>
+</section>
+<section>
+<div class="flex items-center justify-between mb-4">
+<h2 class="font-headline-md text-headline-md text-on-surface">Resumen por Bodega</h2>
+</div>
+<div id="cards-resumen" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4"></div>
+</section>
+
+<section>
+<div class="flex items-center justify-between mb-4">
+<h2 class="font-headline-md text-headline-md text-on-surface">Alimentar Ocupabilidad</h2>
+<span class="text-body-md text-on-surface-variant" id="ocup-fecha-hoy">—</span>
+</div>
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 shadow-sm max-w-sm">
+<div class="space-y-3 mb-4">
+<div class="flex justify-between items-center">
+<span class="text-xs font-bold text-on-surface-variant uppercase">Total a registrar hoy</span>
+<span class="font-data-mono text-lg font-bold text-primary" id="ocup-total-val">—</span>
+</div>
+<p class="text-xs text-on-surface-variant">Ubicaciones únicas con existencia registradas en Saldo.</p>
+</div>
+<button onclick="alimentarOcupabilidad()" id="btn-alimentar-ocupabilidad" class="w-full bg-primary text-on-primary py-2 rounded-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-[18px]">bolt</span>Alimentar
+</button>
+<p id="ocup-msg" class="text-xs mt-2 text-on-surface-variant"></p>
+</div>
+</section>
+</div>
+
+<!-- ================= SECCIÓN SALDO ================= -->
+<div id="view-saldo" class="section-view flex-1 space-y-6">
+<section class="flex items-center justify-between">
+<span class="text-body-md text-on-surface-variant" id="saldo-updated-label">—</span>
+</section>
+
+<section class="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden flex flex-col shadow-sm flex-1">
+<div class="px-6 py-4 border-b border-outline-variant flex items-center justify-between flex-wrap gap-3">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Lista de Existencias</h3>
+<div class="flex items-center gap-2 flex-wrap">
+<input type="file" id="input-plantilla-saldo" accept=".xlsx,.xls,.csv" class="hidden" onchange="cargarPlantillaSaldo(event)">
+<button onclick="descargarPlantillaSaldo()" class="flex items-center gap-2 px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10">
+<span class="material-symbols-outlined text-[18px]">description</span>Plantilla
+</button>
+<button onclick="document.getElementById('input-plantilla-saldo').click()" class="flex items-center gap-2 px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10">
+<span class="material-symbols-outlined text-[18px]">upload</span>Importar / Actualizar
+</button>
+<button onclick="exportarXLSX('saldo')" class="flex items-center gap-2 px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-bold active:scale-95">
+<span class="material-symbols-outlined text-[18px]">download</span>Exportar
+</button>
+</div>
+</div>
+<div class="px-6 py-3 border-b border-outline-variant bg-surface-container-low/50 flex flex-wrap items-end gap-3">
+<div class="flex flex-col gap-1">
+<label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">WHS</label>
+<select id="filtro-whs" onchange="aplicarFiltroSaldo()" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-28 outline-none focus:ring-2 focus:ring-primary">
+<option value="">Todas</option>
+</select>
+</div>
+<div class="flex flex-col gap-1">
+<label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">Ubicación</label>
+<input id="filtro-ubicacion" oninput="aplicarFiltroSaldoDebounced()" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-32 outline-none focus:ring-2 focus:ring-primary" type="text" placeholder="042206">
+</div>
+<div class="flex flex-col gap-1">
+<label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">Código</label>
+<input id="filtro-codigo" oninput="aplicarFiltroSaldoDebounced()" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-40 outline-none focus:ring-2 focus:ring-primary" type="text" placeholder="sbbeauty...">
+</div>
+<div class="flex flex-col gap-1">
+<label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">Código BPCS</label>
+<input id="filtro-codigo-bpcs" oninput="aplicarFiltroSaldoDebounced()" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-32 outline-none focus:ring-2 focus:ring-primary" type="text" placeholder="GY1030581">
+</div>
+<div class="flex flex-col gap-1">
+<label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">EAN</label>
+<input id="filtro-ean" oninput="aplicarFiltroSaldoDebounced()" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-36 outline-none focus:ring-2 focus:ring-primary" type="text" placeholder="6958697900568">
+</div>
+<button onclick="limpiarFiltrosSaldo()" class="flex items-center gap-1 px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10">
+<span class="material-symbols-outlined text-[16px]">filter_alt_off</span>Limpiar
+</button>
+</div>
+<div class="overflow-auto flex-1" style="max-height: calc(100vh - 470px);">
+<table class="w-full text-left border-collapse min-w-[2200px]">
+<thead class="bg-surface-container-low sticky top-0 z-20">
+<tr class="text-table-header font-table-header text-on-surface-variant">
+<th class="px-4 py-3 border-b border-outline-variant w-10"><input type="checkbox" id="chk-all-saldo" onclick="toggleSaldoAll(this.checked)"></th>
+<th class="px-4 py-3 border-b border-outline-variant">WHS</th>
+<th class="px-4 py-3 border-b border-outline-variant">UBICACIÓN</th>
+<th class="px-4 py-3 border-b border-outline-variant">CÓDIGO</th>
+<th class="px-4 py-3 border-b border-outline-variant">CÓD. BPCS</th>
+<th class="px-4 py-3 border-b border-outline-variant">EAN 13</th>
+<th class="px-4 py-3 border-b border-outline-variant">DESCRIPCIÓN</th>
+<th class="px-4 py-3 border-b border-outline-variant">LOTE BPCS</th>
+<th class="px-4 py-3 border-b border-outline-variant">LOTE FÍSICO</th>
+<th class="px-4 py-3 border-b border-outline-variant">EXPIRA</th>
+<th class="px-4 py-3 border-b border-outline-variant text-center">VENCE EN</th>
+<th class="px-4 py-3 border-b border-outline-variant">FAMILIA</th>
+<th class="px-4 py-3 border-b border-outline-variant text-right">SALDO</th>
+<th class="px-4 py-3 border-b border-outline-variant">ESTATUS</th>
+</tr>
+</thead>
+<tbody id="tbody-saldo" class="divide-y divide-surface-variant font-body-md text-sm"></tbody>
+</table>
+</div>
+<div class="px-6 py-3 border-t border-outline-variant bg-surface-container-low flex justify-between items-center">
+<div class="text-xs text-on-surface-variant font-medium" id="saldo-count-label">Cargando...</div>
+<button id="btn-cargar-mas-saldo" onclick="cargarMasSaldo()" class="px-4 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10 hidden">Cargar más filas</button>
+</div>
+</section>
+</div>
+
+<!-- ================= SECCIÓN BODEGAS ================= -->
+<div id="view-bodegas" class="section-view space-y-6">
+<section class="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden flex flex-col shadow-sm">
+<div class="px-6 py-4 border-b border-outline-variant flex items-center justify-between">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Catálogo de Bodegas</h3>
+<button onclick="exportarXLSX('bodegas')" class="flex items-center gap-2 px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-bold active:scale-95">
+<span class="material-symbols-outlined text-[18px]">download</span>Exportar
+</button>
+</div>
+<div class="overflow-auto">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface-container-low sticky top-0 z-20">
+<tr class="text-table-header font-table-header text-on-surface-variant">
+<th class="px-4 py-3 border-b border-outline-variant">BODEGA</th>
+<th class="px-4 py-3 border-b border-outline-variant">DESCRIPCIÓN</th>
+</tr>
+</thead>
+<tbody id="tbody-bodegas" class="divide-y divide-surface-variant font-body-md text-sm"></tbody>
+</table>
+</div>
+</section>
+</div>
+
+<!-- ================= SECCIÓN MAESTRA ================= -->
+<div id="view-maestra" class="section-view space-y-6 flex-1">
+<section class="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden flex flex-col shadow-sm flex-1">
+<div class="px-6 py-4 border-b border-outline-variant flex items-center justify-between">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Maestra de Artículos</h3>
+<button onclick="exportarXLSX('maestra')" class="flex items-center gap-2 px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-bold active:scale-95">
+<span class="material-symbols-outlined text-[18px]">download</span>Exportar
+</button>
+</div>
+<div class="overflow-auto flex-1" style="max-height: calc(100vh - 260px);">
+<table class="w-full text-left border-collapse min-w-[1400px]">
+<thead class="bg-surface-container-low sticky top-0 z-20">
+<tr class="text-table-header font-table-header text-on-surface-variant">
+<th class="px-4 py-3 border-b border-outline-variant">CÓDIGO</th>
+<th class="px-4 py-3 border-b border-outline-variant">CÓDIGO BPCS</th>
+<th class="px-4 py-3 border-b border-outline-variant">DESCRIPCIÓN</th>
+<th class="px-4 py-3 border-b border-outline-variant">EAN 13</th>
+<th class="px-4 py-3 border-b border-outline-variant">EAN 14</th>
+<th class="px-4 py-3 border-b border-outline-variant">MARCA</th>
+<th class="px-4 py-3 border-b border-outline-variant text-center">UUxEMP</th>
+<th class="px-4 py-3 border-b border-outline-variant text-center">BASE</th>
+<th class="px-4 py-3 border-b border-outline-variant text-center">ALTURA</th>
+<th class="px-4 py-3 border-b border-outline-variant text-center">UUxPALET</th>
+</tr>
+</thead>
+<tbody id="tbody-maestra" class="divide-y divide-surface-variant font-body-md text-sm"></tbody>
+</table>
+</div>
+<div class="px-6 py-3 border-t border-outline-variant bg-surface-container-low text-xs text-on-surface-variant font-medium" id="maestra-count-label">Cargando...</div>
+</section>
+</div>
+
+<!-- ================= SECCIÓN OCUPABILIDAD ================= -->
+<div id="view-ocupabilidad" class="section-view space-y-6 flex-1">
+<section class="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden flex flex-col shadow-sm flex-1">
+<div class="px-6 py-4 border-b border-outline-variant flex items-center justify-between">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Ocupabilidad por Mes</h3>
+<button onclick="exportarXLSX('ocupabilidad')" class="flex items-center gap-2 px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-bold active:scale-95">
+<span class="material-symbols-outlined text-[18px]">download</span>Exportar
+</button>
+</div>
+<div class="overflow-auto flex-1" style="max-height: calc(100vh - 260px);">
+<table class="w-full text-left border-collapse min-w-[2400px]">
+<thead class="bg-surface-container-low sticky top-0 z-20">
+<tr id="thead-ocupabilidad" class="text-table-header font-table-header text-on-surface-variant"></tr>
+</thead>
+<tbody id="tbody-ocupabilidad" class="divide-y divide-surface-variant font-body-md text-sm"></tbody>
+</table>
+</div>
+</section>
+</div>
+
+</div>
+
+<footer class="p-4 text-center border-t border-outline-variant bg-surface mt-auto">
+<p class="text-xs text-on-surface-variant font-medium">© 2026 Inventario GLIMMER • Consulta de Saldo</p>
+</footer>
+</main>
+</div>
+
+<script>
+// =========================================================
+// CONFIGURACIÓN
+// =========================================================
+const URL_SALDO        = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS0j0wNt1izjNQdp1SAQYbtVz2n1hiZkUVvGC8Q4AbGgxOoITwNMbxUJ4KrKcYyM8QhIF4srhmNeYND/pub?gid=273620597&single=true&output=csv';
+const URL_MAESTRA      = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQMPc1HwfWbpNMyRGWD1vrrXsGgPCLEBJWuW7cgciAttxNHTH_ZwOdv5GnApKKdk31Pgoxm32TRX0gq/pub?gid=649948627&single=true&output=csv';
+const URL_BODEGAS      = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQMPc1HwfWbpNMyRGWD1vrrXsGgPCLEBJWuW7cgciAttxNHTH_ZwOdv5GnApKKdk31Pgoxm32TRX0gq/pub?gid=1981221214&single=true&output=csv';
+const URL_OCUPABILIDAD = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQMPc1HwfWbpNMyRGWD1vrrXsGgPCLEBJWuW7cgciAttxNHTH_ZwOdv5GnApKKdk31Pgoxm32TRX0gq/pub?gid=297551892&single=true&output=csv';
+
+// URL del Apps Script (Extensiones > Apps Script en el Sheet de SALDO) que recibe la
+// plantilla subida y sobre-escribe la pestaña real. Pégala aquí cuando la despliegues.
+const APPS_SCRIPT_URL_SALDO = 'https://script.google.com/macros/s/AKfycbyz9gFx_7IxsyB3Wp4uqiInLfmmjUW-z5b8-TdKs8uZGdYPbAfG_5YGbnqEUXk1xPpPNQ/exec';
+// URL del Apps Script (Extensiones > Apps Script en el Sheet de MAESTRA/BODEGAS/OCUPABILIDAD)
+// que recibe el valor del día y lo escribe en la pestaña OCUPABILIDAD. Pégala cuando la despliegues.
+const APPS_SCRIPT_URL_OCUPABILIDAD = 'https://script.google.com/macros/s/AKfycbwvEVTXUagPtYHkzK9tremFTeFi19KOsXj9EpbdVMF4Hlk5Yi8aHkPj4YFDae5039-wHg/exec';
 // Debe coincidir EXACTAMENTE con la constante TOKEN de ambos Code.gs
 const UPLOAD_TOKEN = '2026';
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
