@@ -149,6 +149,9 @@
 <input id="global-search" oninput="onSearch()" class="pl-10 pr-4 py-2 bg-surface-container-low border border-outline-variant rounded-full text-body-md w-80 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all" placeholder="Buscar código, lote, ubicación..." type="text">
 </div>
 </div>
+<button onclick="forceReloadAll()" class="flex items-center gap-2 px-4 py-2 border border-outline-variant rounded-full text-sm font-bold hover:bg-surface-variant/10 active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-[18px]" id="icon-refresh-header">sync</span>Actualizar
+</button>
 </header>
 
 <div class="p-6 space-y-6 w-full flex-1 flex flex-col">
@@ -396,10 +399,10 @@ const URL_OCUPABILIDAD = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQMPc1
 
 // URL del Apps Script (Extensiones > Apps Script en el Sheet de SALDO) que recibe la
 // plantilla subida y sobre-escribe la pestaña real. Pégala aquí cuando la despliegues.
-const APPS_SCRIPT_URL_SALDO = 'https://script.google.com/macros/s/AKfycbyz9gFx_7IxsyB3Wp4uqiInLfmmjUW-z5b8-TdKs8uZGdYPbAfG_5YGbnqEUXk1xPpPNQ/exec'; // ej: 'https://script.google.com/macros/s/AAA.../exec'
+const APPS_SCRIPT_URL_SALDO = 'https://script.google.com/macros/s/AKfycbyz9gFx_7IxsyB3Wp4uqiInLfmmjUW-z5b8-TdKs8uZGdYPbAfG_5YGbnqEUXk1xPpPNQ/exec';
 // URL del Apps Script (Extensiones > Apps Script en el Sheet de MAESTRA/BODEGAS/OCUPABILIDAD)
 // que recibe el valor del día y lo escribe en la pestaña OCUPABILIDAD. Pégala cuando la despliegues.
-const APPS_SCRIPT_URL_OCUPABILIDAD = 'https://script.google.com/macros/s/AKfycbyz9gFx_7IxsyB3Wp4uqiInLfmmjUW-z5b8-TdKs8uZGdYPbAfG_5YGbnqEUXk1xPpPNQ/exec'; // ej: 'https://script.google.com/macros/s/BBB.../exec'
+const APPS_SCRIPT_URL_OCUPABILIDAD = 'https://script.google.com/macros/s/AKfycbyVOpABjYMcIA196eVTRF--iYTh4xhjJy_phAUV-hGjvlVXMrwZHLLAHSZvLJO8ZJ6g/exec';
 // Debe coincidir EXACTAMENTE con la constante TOKEN de ambos Code.gs
 const UPLOAD_TOKEN = '2026';
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
@@ -560,7 +563,9 @@ async function cargarOcupabilidad(force = false) {
 
 async function cargarTodo(force = false) {
     const icon = document.getElementById('icon-refresh-all');
+    const iconHeader = document.getElementById('icon-refresh-header');
     icon.classList.add('spin');
+    iconHeader.classList.add('spin');
     try {
         await Promise.all([cargarSaldo(force), cargarMaestra(force), cargarBodegas(force), cargarOcupabilidad(force)]);
         buildMaestraIndex();
@@ -580,6 +585,7 @@ async function cargarTodo(force = false) {
         alert('Error cargando datos: ' + err.message);
     } finally {
         icon.classList.remove('spin');
+        iconHeader.classList.remove('spin');
     }
 }
 function forceReloadAll() { cargarTodo(true); }
@@ -871,11 +877,18 @@ function onSearch() {
 // NAVEGACIÓN ENTRE SECCIONES
 // =========================================================
 const TITLES = { dashboard: 'Resumen Ejecutivo', saldo: 'Consulta de Saldo', bodegas: 'Catálogo de Bodegas', maestra: 'Maestra de Artículos', ocupabilidad: 'Ocupabilidad' };
+const NAV_ACTIVE_CLASSES   = ['active', 'bg-secondary-container', 'text-on-secondary-container', 'font-bold'];
+const NAV_INACTIVE_CLASSES = ['text-on-primary-container', 'hover:bg-surface-variant/20'];
+
 document.getElementById('side-nav').addEventListener('click', (e) => {
     const link = e.target.closest('[data-section]');
     if (!link) return;
-    document.querySelectorAll('.nav-link').forEach(a => a.classList.remove('active', 'bg-secondary-container', 'text-on-secondary-container'));
-    link.classList.add('active', 'bg-secondary-container', 'text-on-secondary-container');
+    document.querySelectorAll('.nav-link').forEach(a => {
+        a.classList.remove(...NAV_ACTIVE_CLASSES, ...NAV_INACTIVE_CLASSES);
+        a.classList.add(...NAV_INACTIVE_CLASSES);
+    });
+    link.classList.remove(...NAV_INACTIVE_CLASSES);
+    link.classList.add(...NAV_ACTIVE_CLASSES);
     const section = link.dataset.section;
     document.querySelectorAll('.section-view').forEach(v => v.classList.remove('active'));
     document.getElementById('view-' + section).classList.add('active');
