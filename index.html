@@ -117,6 +117,14 @@
 <span class="material-symbols-outlined">inventory_2</span>
 <span>Saldo</span>
 </a>
+<a data-section="interfaz" class="nav-link text-on-primary-container hover:bg-surface-variant/20 rounded-lg px-4 py-3 flex items-center gap-3 transition-colors cursor-pointer">
+<span class="material-symbols-outlined">swap_horiz</span>
+<span>Generar Interfaz</span>
+</a>
+<a data-section="tickets" class="nav-link text-on-primary-container hover:bg-surface-variant/20 rounded-lg px-4 py-3 flex items-center gap-3 transition-colors cursor-pointer">
+<span class="material-symbols-outlined">confirmation_number</span>
+<span>Tickets</span>
+</a>
 <a data-section="bodegas" class="nav-link text-on-primary-container hover:bg-surface-variant/20 rounded-lg px-4 py-3 flex items-center gap-3 transition-colors cursor-pointer">
 <span class="material-symbols-outlined">warehouse</span>
 <span>Bodegas</span>
@@ -271,26 +279,45 @@
 <label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">EAN</label>
 <input id="filtro-ean" oninput="aplicarFiltroSaldoDebounced()" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-36 outline-none focus:ring-2 focus:ring-primary" type="text" placeholder="6958697900568">
 </div>
-<div class="flex flex-col gap-1">
-<label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">Códigos (varios)</label>
-<textarea id="filtro-codigos-multi" oninput="aplicarFiltroSaldoDebounced()" rows="1" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-56 outline-none focus:ring-2 focus:ring-primary resize-y font-data-mono" placeholder="Pega varios códigos: uno por línea o separados por coma"></textarea>
+<div class="flex flex-col gap-1 relative" id="wrap-dropdown-bpcs">
+<label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">Cód. BPCS (varios)</label>
+<button type="button" onclick="toggleDropdownMulti('bpcs')" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-44 outline-none focus:ring-2 focus:ring-primary flex items-center justify-between gap-1">
+<span id="label-dropdown-bpcs" class="truncate text-on-surface-variant">Todos</span>
+<span class="material-symbols-outlined text-[16px]">expand_more</span>
+</button>
+<div id="panel-dropdown-bpcs" class="hidden absolute top-full left-0 mt-1 z-30 bg-surface-container-lowest border border-outline-variant rounded-lg shadow-lg w-64 max-h-72 flex flex-col">
+<input type="text" id="search-dropdown-bpcs" oninput="renderOpcionesDropdown('bpcs')" placeholder="Buscar código..." class="m-2 text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface outline-none focus:ring-2 focus:ring-primary">
+<div class="flex justify-between px-3 pb-1">
+<button type="button" onclick="limpiarDropdownMulti('bpcs')" class="text-[10px] font-bold text-primary">Limpiar</button>
+<span id="count-dropdown-bpcs" class="text-[10px] text-on-surface-variant"></span>
+</div>
+<div id="opciones-dropdown-bpcs" class="overflow-auto flex-1 px-3 pb-3 space-y-1 text-sm"></div>
+</div>
+</div>
+<div class="flex flex-col gap-1 relative" id="wrap-dropdown-lote">
+<label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">Lote Físico (varios)</label>
+<button type="button" onclick="toggleDropdownMulti('lote')" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-44 outline-none focus:ring-2 focus:ring-primary flex items-center justify-between gap-1">
+<span id="label-dropdown-lote" class="truncate text-on-surface-variant">Todos</span>
+<span class="material-symbols-outlined text-[16px]">expand_more</span>
+</button>
+<div id="panel-dropdown-lote" class="hidden absolute top-full left-0 mt-1 z-30 bg-surface-container-lowest border border-outline-variant rounded-lg shadow-lg w-64 max-h-72 flex flex-col">
+<input type="text" id="search-dropdown-lote" oninput="renderOpcionesDropdown('lote')" placeholder="Buscar lote..." class="m-2 text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface outline-none focus:ring-2 focus:ring-primary">
+<div class="flex justify-between px-3 pb-1">
+<button type="button" onclick="limpiarDropdownMulti('lote')" class="text-[10px] font-bold text-primary">Limpiar</button>
+<span id="count-dropdown-lote" class="text-[10px] text-on-surface-variant"></span>
+</div>
+<div id="opciones-dropdown-lote" class="overflow-auto flex-1 px-3 pb-3 space-y-1 text-sm"></div>
+</div>
 </div>
 <button onclick="limpiarFiltrosSaldo()" class="flex items-center gap-1 px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10">
 <span class="material-symbols-outlined text-[16px]">filter_alt_off</span>Limpiar
 </button>
 </div>
 <div class="px-6 py-3 border-b border-outline-variant bg-surface-container-low/30 flex flex-wrap items-center gap-2">
-<span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide mr-1">Generar Interfaz</span>
-<button onclick="abrirModalInterfaz('LT_PP')" class="px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10">LT → PP</button>
-<button onclick="abrirModalInterfaz('PP_IV')" class="px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10">PP → IV</button>
-<button onclick="abrirModalInterfaz('IV_CG')" class="px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10">IV → CG</button>
-<button onclick="abrirModalInterfaz('CG_TR')" class="px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10">CG → TR</button>
-<button onclick="abrirModalInterfaz('TR_PD')" class="px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10">TR → PD</button>
-<button onclick="abrirModalInterfaz('PD_LT')" class="px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10">PD → LT</button>
-<span class="w-px h-5 bg-outline-variant mx-1"></span>
-<button onclick="abrirModalInterfaz('SIGTRA')" class="px-3 py-1.5 bg-tertiary-container text-on-tertiary-container rounded-lg text-xs font-bold hover:opacity-90">SIGTRA</button>
-<button onclick="abrirModalInterfaz('SIWTRA')" class="px-3 py-1.5 bg-tertiary-container text-on-tertiary-container rounded-lg text-xs font-bold hover:opacity-90">SIWTRA</button>
-<span class="text-xs text-on-surface-variant ml-auto" id="interfaz-filas-label">0 filas se usarán</span>
+<button onclick="abrirDetalleInterfazSaldo()" class="flex items-center gap-2 px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-bold active:scale-95">
+<span class="material-symbols-outlined text-[18px]">swap_horiz</span>Generar Interfaz
+</button>
+<span class="text-xs text-on-surface-variant" id="interfaz-filas-label">0 filas se usarán</span>
 </div>
 <div class="overflow-auto flex-1" style="max-height: calc(100vh - 470px);">
 <table class="w-full text-left border-collapse min-w-[2200px]">
@@ -318,6 +345,81 @@
 <div class="px-6 py-3 border-t border-outline-variant bg-surface-container-low flex justify-between items-center">
 <div class="text-xs text-on-surface-variant font-medium" id="saldo-count-label">Cargando...</div>
 <button id="btn-cargar-mas-saldo" onclick="cargarMasSaldo()" class="px-4 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10 hidden">Cargar más filas</button>
+</div>
+</section>
+</div>
+
+<!-- ================= SECCIÓN GENERAR INTERFAZ ================= -->
+<div id="view-interfaz" class="section-view flex-1 space-y-6">
+<section class="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden flex flex-col shadow-sm flex-1">
+<div class="px-6 py-4 border-b border-outline-variant flex items-center justify-between flex-wrap gap-3">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Generar Interfaz</h3>
+<div class="flex items-center gap-2 flex-wrap">
+<input type="file" id="input-plantilla-interfaz" accept=".xlsx,.xls,.csv" class="hidden" onchange="cargarPlantillaInterfaz(event)">
+<button onclick="document.getElementById('input-plantilla-interfaz').click()" class="flex items-center gap-2 px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10">
+<span class="material-symbols-outlined text-[18px]">upload</span>Importar plantilla
+</button>
+</div>
+</div>
+<p class="px-6 pt-3 text-xs text-on-surface-variant">Sube la plantilla que descargaste desde Saldo (botón "Generar Interfaz" → "Descargar plantilla"). Cabeceras esperadas: WHS, UBICACIÓN, CÓDIGO, CÓD. BPCS, LOTE BPCS, LOTE FÍSICO, EXPIRA, SALDO, COMENTARIO.</p>
+<div class="px-6 py-3 border-b border-outline-variant bg-surface-container-low/30 flex flex-wrap items-center gap-2">
+<span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide mr-1">TRFMAN</span>
+<button onclick="abrirModalInterfaz('LT_PP')" disabled class="btn-interfaz px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10 disabled:opacity-40 disabled:cursor-not-allowed">LT → PP</button>
+<button onclick="abrirModalInterfaz('PP_IV')" disabled class="btn-interfaz px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10 disabled:opacity-40 disabled:cursor-not-allowed">PP → IV</button>
+<button onclick="abrirModalInterfaz('IV_CG')" disabled class="btn-interfaz px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10 disabled:opacity-40 disabled:cursor-not-allowed">IV → CG</button>
+<button onclick="abrirModalInterfaz('CG_TR')" disabled class="btn-interfaz px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10 disabled:opacity-40 disabled:cursor-not-allowed">CG → TR</button>
+<button onclick="abrirModalInterfaz('TR_PD')" disabled class="btn-interfaz px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10 disabled:opacity-40 disabled:cursor-not-allowed">TR → PD</button>
+<button onclick="abrirModalInterfaz('PD_LT')" disabled class="btn-interfaz px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10 disabled:opacity-40 disabled:cursor-not-allowed">PD → LT</button>
+<span class="w-px h-5 bg-outline-variant mx-1"></span>
+<span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide mr-1">SIGTRA/SIWTRA</span>
+<button onclick="generarInterfazDirecta('SIGTRA')" disabled class="btn-interfaz px-3 py-1.5 bg-tertiary-container text-on-tertiary-container rounded-lg text-xs font-bold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed">SIGTRA</button>
+<button onclick="generarInterfazDirecta('SIWTRA')" disabled class="btn-interfaz px-3 py-1.5 bg-tertiary-container text-on-tertiary-container rounded-lg text-xs font-bold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed">SIWTRA</button>
+<span class="text-xs text-on-surface-variant ml-auto" id="interfaz-plantilla-label">Ninguna plantilla cargada</span>
+</div>
+<div class="overflow-auto flex-1" style="max-height: calc(100vh - 320px);">
+<table class="w-full text-left border-collapse min-w-[1300px]">
+<thead class="bg-surface-container-low sticky top-0 z-20">
+<tr class="text-table-header font-table-header text-on-surface-variant">
+<th class="px-4 py-3 border-b border-outline-variant">WHS</th>
+<th class="px-4 py-3 border-b border-outline-variant">UBICACIÓN</th>
+<th class="px-4 py-3 border-b border-outline-variant">CÓDIGO</th>
+<th class="px-4 py-3 border-b border-outline-variant">CÓD. BPCS</th>
+<th class="px-4 py-3 border-b border-outline-variant">LOTE BPCS</th>
+<th class="px-4 py-3 border-b border-outline-variant">LOTE FÍSICO</th>
+<th class="px-4 py-3 border-b border-outline-variant">EXPIRA</th>
+<th class="px-4 py-3 border-b border-outline-variant text-right">SALDO</th>
+<th class="px-4 py-3 border-b border-outline-variant">COMENTARIO</th>
+</tr>
+</thead>
+<tbody id="tbody-interfaz" class="divide-y divide-surface-variant font-body-md text-sm"></tbody>
+</table>
+</div>
+</section>
+</div>
+
+<!-- ================= SECCIÓN TICKETS ================= -->
+<div id="view-tickets" class="section-view flex-1 space-y-6">
+<section class="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden flex flex-col shadow-sm flex-1">
+<div class="px-6 py-4 border-b border-outline-variant flex items-center justify-between flex-wrap gap-3">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Tickets</h3>
+<button onclick="cargarTickets()" class="flex items-center gap-2 px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10">
+<span class="material-symbols-outlined text-[18px]">refresh</span>Actualizar
+</button>
+</div>
+<p class="px-6 pt-3 text-xs text-on-surface-variant">Una fila por cada vez que generas una interfaz. Escribe el número de ticket que te dio el sistema al cargarla; se guarda solo al salir del campo.</p>
+<div class="overflow-auto flex-1" style="max-height: calc(100vh - 300px);">
+<table class="w-full text-left border-collapse min-w-[900px]">
+<thead class="bg-surface-container-low sticky top-0 z-20">
+<tr class="text-table-header font-table-header text-on-surface-variant">
+<th class="px-4 py-3 border-b border-outline-variant">FECHA</th>
+<th class="px-4 py-3 border-b border-outline-variant">HORA</th>
+<th class="px-4 py-3 border-b border-outline-variant">INTERFAZ</th>
+<th class="px-4 py-3 border-b border-outline-variant">COMENTARIO</th>
+<th class="px-4 py-3 border-b border-outline-variant w-48">TICKET</th>
+</tr>
+</thead>
+<tbody id="tbody-tickets" class="divide-y divide-surface-variant font-body-md text-sm"></tbody>
+</table>
 </div>
 </section>
 </div>
@@ -403,6 +505,40 @@
 <p class="text-xs text-on-surface-variant font-medium">© 2026 Inventario GLIMMER • Consulta de Saldo</p>
 </footer>
 </main>
+</div>
+
+<!-- ================= MODAL: DETALLE PARA INTERFAZ (desde Saldo) ================= -->
+<div id="modal-detalle-interfaz" class="hidden fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl shadow-lg w-full max-w-5xl max-h-[90vh] flex flex-col">
+<div class="px-6 py-4 border-b border-outline-variant flex items-center justify-between">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Detalle para Interfaz</h3>
+<button onclick="cerrarDetalleInterfazSaldo()" class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined">close</span></button>
+</div>
+<div class="px-6 py-3 border-b border-outline-variant bg-surface-container-low/30 flex items-center justify-between flex-wrap gap-2">
+<span class="text-xs text-on-surface-variant" id="detalle-interfaz-resumen"></span>
+<button onclick="descargarPlantillaInterfazSaldo()" class="flex items-center gap-2 px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-bold active:scale-95">
+<span class="material-symbols-outlined text-[18px]">download</span>Descargar plantilla .xls
+</button>
+</div>
+<div class="overflow-auto flex-1">
+<table class="w-full text-left border-collapse min-w-[1400px]">
+<thead class="bg-surface-container-low sticky top-0 z-20">
+<tr class="text-table-header font-table-header text-on-surface-variant">
+<th class="px-4 py-3 border-b border-outline-variant">WHS</th>
+<th class="px-4 py-3 border-b border-outline-variant">UBICACIÓN</th>
+<th class="px-4 py-3 border-b border-outline-variant">CÓDIGO</th>
+<th class="px-4 py-3 border-b border-outline-variant">CÓD. BPCS</th>
+<th class="px-4 py-3 border-b border-outline-variant">LOTE BPCS</th>
+<th class="px-4 py-3 border-b border-outline-variant">LOTE FÍSICO</th>
+<th class="px-4 py-3 border-b border-outline-variant">EXPIRA</th>
+<th class="px-4 py-3 border-b border-outline-variant text-right">SALDO</th>
+<th class="px-4 py-3 border-b border-outline-variant w-56">COMENTARIO</th>
+</tr>
+</thead>
+<tbody id="tbody-detalle-interfaz" class="divide-y divide-surface-variant font-body-md text-sm"></tbody>
+</table>
+</div>
+</div>
 </div>
 
 <!-- ================= MODAL: GENERAR INTERFAZ ================= -->
@@ -615,6 +751,7 @@ async function cargarTodo(force = false) {
         renderResumen();
         renderKPIsDashboard();
         poblarFiltroWHS();
+        poblarOpcionesDropdownMulti();
         aplicarFiltroSaldo();
         renderMaestra();
         renderOcupabilidad();
@@ -741,7 +878,8 @@ function aplicarFiltroSaldo() {
     const fCod  = (document.getElementById('filtro-codigo').value || '').trim().toUpperCase();
     const fBpcs = (document.getElementById('filtro-codigo-bpcs').value || '').trim().toUpperCase();
     const fEan  = (document.getElementById('filtro-ean').value || '').trim().toUpperCase();
-    const fMulti = parseCodigosMulti(document.getElementById('filtro-codigos-multi').value);
+    const fBpcsMulti = dropdownMultiState.bpcs;
+    const fLoteMulti = dropdownMultiState.lote;
 
     saldoFiltrado = dataSaldo.filter(r => {
         if (q && !Object.values(r).some(v => String(v).toUpperCase().includes(q))) return false;
@@ -753,7 +891,9 @@ function aplicarFiltroSaldo() {
         const info = maestraByBpcs.get(bpcsVal) || {};
         if (fCod && !String(info.codigoCliente || '').toUpperCase().includes(fCod)) return false;
         if (fEan && !String(info.ean13 || '').toUpperCase().includes(fEan)) return false;
-        if (fMulti.length && !fMulti.includes(bpcsVal) && !fMulti.includes(String(info.codigoCliente || '').toUpperCase())) return false;
+        if (fBpcsMulti.size && !fBpcsMulti.has(bpcsVal)) return false;
+        const loteVal = String(r['LOTE FISICO'] || '').toUpperCase();
+        if (fLoteMulti.size && !fLoteMulti.has(loteVal)) return false;
         return true;
     });
     saldoRenderCount = 0;
@@ -763,20 +903,92 @@ function aplicarFiltroSaldo() {
 }
 const aplicarFiltroSaldoDebounced = debounce(aplicarFiltroSaldo, 300);
 
-// Convierte el texto pegado en el textarea de "Códigos (varios)" en un array
-// de códigos en mayúsculas, aceptando separación por línea, coma o punto y coma.
-function parseCodigosMulti(texto) {
-    return (texto || '')
-        .split(/[\n,;]+/)
-        .map(s => s.trim().toUpperCase())
-        .filter(Boolean);
+// =========================================================
+// DROPDOWNS MULTI-SELECCIÓN (checklist) — Cód. BPCS y Lote Físico
+// =========================================================
+const DROPDOWN_MULTI_FIELD = { bpcs: 'CODIGO', lote: 'LOTE FISICO' };
+let dropdownMultiState = { bpcs: new Set(), lote: new Set() };
+let dropdownMultiOpciones = { bpcs: [], lote: [] }; // valores únicos, ordenados
+
+function poblarOpcionesDropdownMulti() {
+    Object.keys(DROPDOWN_MULTI_FIELD).forEach(key => {
+        const campo = DROPDOWN_MULTI_FIELD[key];
+        const set = new Set();
+        dataSaldo.forEach(r => { const v = String(r[campo] || '').trim(); if (v) set.add(v); });
+        dropdownMultiOpciones[key] = Array.from(set).sort((a, b) => a.localeCompare(b));
+    });
+}
+
+function toggleDropdownMulti(key) {
+    const panel = document.getElementById('panel-dropdown-' + key);
+    const abierto = !panel.classList.contains('hidden');
+    // Cierra cualquier otro panel abierto
+    ['bpcs', 'lote'].forEach(k => document.getElementById('panel-dropdown-' + k).classList.add('hidden'));
+    if (!abierto) {
+        panel.classList.remove('hidden');
+        document.getElementById('search-dropdown-' + key).value = '';
+        renderOpcionesDropdown(key);
+    }
+}
+document.addEventListener('click', (e) => {
+    ['bpcs', 'lote'].forEach(key => {
+        const wrap = document.getElementById('wrap-dropdown-' + key);
+        if (wrap && !wrap.contains(e.target)) document.getElementById('panel-dropdown-' + key).classList.add('hidden');
+    });
+});
+
+function renderOpcionesDropdown(key) {
+    const q = (document.getElementById('search-dropdown-' + key).value || '').trim().toUpperCase();
+    const cont = document.getElementById('opciones-dropdown-' + key);
+    const seleccionados = dropdownMultiState[key];
+    const lista = dropdownMultiOpciones[key].filter(v => !q || v.toUpperCase().includes(q));
+    if (!lista.length) { cont.innerHTML = '<div class="text-xs text-on-surface-variant py-2">Sin resultados.</div>'; return; }
+    cont.innerHTML = lista.map(v => {
+        const id = 'opt-' + key + '-' + btoa(unescape(encodeURIComponent(v))).replace(/[^a-zA-Z0-9]/g, '');
+        const checked = seleccionados.has(v.toUpperCase()) ? 'checked' : '';
+        return `<label class="flex items-center gap-2 py-0.5 cursor-pointer hover:bg-surface-variant/10 rounded px-1" for="${id}">
+            <input type="checkbox" id="${id}" data-val="${v.replace(/"/g,'&quot;')}" ${checked} onchange="onCheckDropdownMulti('${key}', this)">
+            <span class="font-data-mono text-xs truncate">${v}</span>
+        </label>`;
+    }).join('');
+}
+
+function onCheckDropdownMulti(key, checkbox) {
+    const val = checkbox.dataset.val.toUpperCase();
+    if (checkbox.checked) dropdownMultiState[key].add(val);
+    else dropdownMultiState[key].delete(val);
+    actualizarLabelDropdownMulti(key);
+    aplicarFiltroSaldo();
+}
+
+function actualizarLabelDropdownMulti(key) {
+    const n = dropdownMultiState[key].size;
+    document.getElementById('label-dropdown-' + key).textContent = n ? `${n} seleccionado(s)` : 'Todos';
+    document.getElementById('count-dropdown-' + key).textContent = n ? `${n} marcado(s)` : '';
+}
+
+function limpiarDropdownMulti(key) {
+    dropdownMultiState[key].clear();
+    document.getElementById('search-dropdown-' + key).value = '';
+    renderOpcionesDropdown(key);
+    actualizarLabelDropdownMulti(key);
+    aplicarFiltroSaldo();
+}
+
+function limpiarTodosDropdownMulti() {
+    ['bpcs', 'lote'].forEach(key => {
+        dropdownMultiState[key].clear();
+        actualizarLabelDropdownMulti(key);
+        document.getElementById('panel-dropdown-' + key).classList.add('hidden');
+    });
 }
 
 function limpiarFiltrosSaldo() {
-    ['filtro-whs','filtro-ubicacion','filtro-codigo','filtro-codigo-bpcs','filtro-ean','filtro-codigos-multi'].forEach(id => {
+    ['filtro-whs','filtro-ubicacion','filtro-codigo','filtro-codigo-bpcs','filtro-ean'].forEach(id => {
         document.getElementById(id).value = '';
     });
     document.getElementById('global-search').value = '';
+    limpiarTodosDropdownMulti();
     aplicarFiltroSaldo();
 }
 
@@ -932,7 +1144,7 @@ function onSearch() {
 // =========================================================
 // NAVEGACIÓN ENTRE SECCIONES
 // =========================================================
-const TITLES = { dashboard: 'Resumen Ejecutivo', saldo: 'Consulta de Saldo', bodegas: 'Catálogo de Bodegas', maestra: 'Maestra de Artículos', ocupabilidad: 'Ocupabilidad' };
+const TITLES = { dashboard: 'Resumen Ejecutivo', saldo: 'Consulta de Saldo', interfaz: 'Generar Interfaz', tickets: 'Tickets', bodegas: 'Catálogo de Bodegas', maestra: 'Maestra de Artículos', ocupabilidad: 'Ocupabilidad' };
 const NAV_ACTIVE_CLASSES   = ['active', 'bg-secondary-container', 'text-on-secondary-container', 'font-bold'];
 const NAV_INACTIVE_CLASSES = ['text-on-primary-container', 'hover:bg-surface-variant/20'];
 
@@ -950,6 +1162,7 @@ document.getElementById('side-nav').addEventListener('click', (e) => {
     document.getElementById('view-' + section).classList.add('active');
     document.getElementById('section-title').textContent = TITLES[section];
     document.getElementById('global-search').value = '';
+    if (section === 'tickets') cargarTickets();
 });
 
 // =========================================================
@@ -1047,7 +1260,8 @@ async function cargarPlantillaSaldo(event) {
 // GENERAR INTERFAZ (TRFMAN / SIGTRA / SIWTRA)
 // =========================================================
 // Reglas por botón. Los campos frwh/frlc que NO se especifican toman el valor
-// original de la fila (WHS / UBICACIÓN de Saldo).
+// original de la fila (WHS / UBICACIÓN de la plantilla). rccmt es texto fijo
+// (solo aplica a SIGTRA/SIWTRA, ya no se pide de forma manual).
 const INTERFAZ_CONFIG = {
     LT_PP:  { grupo: 'TRFMAN', label: 'LT → PP',           towh: 'PP',                  tolc: 'PISO' },
     PP_IV:  { grupo: 'TRFMAN', label: 'PP → IV', frwh: 'PP', towh: 'IV', frlc: 'PISO',   tolc: 'PISO' },
@@ -1055,11 +1269,15 @@ const INTERFAZ_CONFIG = {
     CG_TR:  { grupo: 'TRFMAN', label: 'CG → TR', frwh: 'CG', towh: 'TR', frlc: '271001', tolc: 'PISO' },
     TR_PD:  { grupo: 'TRFMAN', label: 'TR → PD', frwh: 'TR', towh: 'PD', frlc: 'PISO',   tolc: 'PISO' },
     PD_LT:  { grupo: 'TRFMAN', label: 'PD → LT', frwh: 'CG', towh: 'TR', frlc: 'PISO',   tolc: 'ACON26' },
-    SIGTRA: { grupo: 'SIGTRA', label: 'SIGTRA', rtran: 'II' },
-    SIWTRA: { grupo: 'SIWTRA', label: 'SIWTRA', rtran: 'RR' }
+    SIGTRA: { grupo: 'SIGTRA', label: 'SIGTRA', rtran: 'II', rccmt: 'TRABAJO LAB SIGNIA -EGRESO' },
+    SIWTRA: { grupo: 'SIWTRA', label: 'SIWTRA', rtran: 'RR', rccmt: 'TRABAJO LAB SIGNIA -INGRESO' }
 };
 
-let pendingInterfazTipo = null;
+// =========================================================
+// 1) DETALLE PARA INTERFAZ (desde Saldo) — pantalla editable +
+//    descarga de la plantilla intermedia (.xls)
+// =========================================================
+const PLANTILLA_INTERFAZ_HEADERS = ['WHS','UBICACIÓN','CÓDIGO','CÓD. BPCS','LOTE BPCS','LOTE FÍSICO','EXPIRA','SALDO','COMENTARIO'];
 
 // Filas que se usarán: si hay checkboxes marcados se usan esas; si no, todas las
 // filas actualmente filtradas en la tabla de Saldo.
@@ -1080,122 +1298,211 @@ function getCodigoCliente(r) {
     return info.codigoCliente || '';
 }
 function getSaldoNumerico(r) {
-    return parseFloat((r['SALDO'] || '0').replace(/,/g, '')) || 0;
+    return parseFloat(String(r['SALDO'] || '0').replace(/,/g, '')) || 0;
 }
 
+function abrirDetalleInterfazSaldo() {
+    const filas = getFilasParaInterfaz();
+    if (!filas.length) { alert('No hay filas filtradas/seleccionadas en Saldo.'); return; }
+
+    document.getElementById('detalle-interfaz-resumen').textContent = `${filas.length} fila(s).`;
+    const tbody = document.getElementById('tbody-detalle-interfaz');
+    tbody.innerHTML = filas.map((r, i) => {
+        const bpcsVal = (r['CODIGO'] || '').toUpperCase();
+        const codigoCliente = getCodigoCliente(r);
+        return `<tr data-idx="${i}">
+            <td class="px-4 py-2 whitespace-nowrap">${r['WHS'] || ''}</td>
+            <td class="px-4 py-2 whitespace-nowrap font-data-mono">${r['UBICACIÓN'] || r['UBICACION'] || ''}</td>
+            <td class="px-4 py-2 whitespace-nowrap font-data-mono">${codigoCliente}</td>
+            <td class="px-4 py-2 whitespace-nowrap font-data-mono">${bpcsVal}</td>
+            <td class="px-4 py-2 whitespace-nowrap font-data-mono">${r['LOTE BPCS'] || ''}</td>
+            <td class="px-4 py-2 whitespace-nowrap font-data-mono">${r['LOTE FISICO'] || ''}</td>
+            <td class="px-4 py-2 whitespace-nowrap font-data-mono">${r['EXPIRA'] || ''}</td>
+            <td class="px-4 py-2 text-right">
+                <input type="number" step="any" class="campo-detalle-saldo text-sm border border-outline-variant rounded-lg px-2 py-1 bg-surface-container-lowest w-28 text-right outline-none focus:ring-2 focus:ring-primary" value="${getSaldoNumerico(r)}">
+            </td>
+            <td class="px-4 py-2">
+                <input type="text" class="campo-detalle-comentario text-sm border border-outline-variant rounded-lg px-2 py-1 bg-surface-container-lowest w-52 outline-none focus:ring-2 focus:ring-primary" ${i === 0 ? 'oninput="replicarComentarioPrimeraFila(this.value)"' : ''}>
+            </td>
+        </tr>`;
+    }).join('');
+    document.getElementById('modal-detalle-interfaz').classList.remove('hidden');
+}
+function cerrarDetalleInterfazSaldo() {
+    document.getElementById('modal-detalle-interfaz').classList.add('hidden');
+}
+// El comentario de la primera fila se replica a las demás; cada fila se puede
+// sobrescribir manualmente después sin que se vuelva a pisar.
+function replicarComentarioPrimeraFila(valor) {
+    document.querySelectorAll('#tbody-detalle-interfaz .campo-detalle-comentario').forEach(inp => {
+        inp.value = valor;
+    });
+}
+function descargarPlantillaInterfazSaldo() {
+    const filas = Array.from(document.querySelectorAll('#tbody-detalle-interfaz tr')).map(tr => {
+        const tds = tr.querySelectorAll('td');
+        return {
+            'WHS': tds[0].textContent.trim(),
+            'UBICACIÓN': tds[1].textContent.trim(),
+            'CÓDIGO': tds[2].textContent.trim(),
+            'CÓD. BPCS': tds[3].textContent.trim(),
+            'LOTE BPCS': tds[4].textContent.trim(),
+            'LOTE FÍSICO': tds[5].textContent.trim(),
+            'EXPIRA': tds[6].textContent.trim(),
+            'SALDO': parseFloat(tr.querySelector('.campo-detalle-saldo').value) || 0,
+            'COMENTARIO': tr.querySelector('.campo-detalle-comentario').value.trim()
+        };
+    });
+    const ws = XLSX.utils.json_to_sheet(filas, { header: PLANTILLA_INTERFAZ_HEADERS });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Plantilla Interfaz');
+    const fecha = new Date().toISOString().slice(0,10).replace(/-/g,'');
+    XLSX.writeFile(wb, `plantilla_interfaz_${fecha}.xlsx`);
+}
+
+// =========================================================
+// 2) SECCIÓN "GENERAR INTERFAZ" — sube la plantilla intermedia
+//    y genera el XLS final (TRFMAN / SIGTRA / SIWTRA)
+// =========================================================
+let interfazPlantillaRows = []; // filas cargadas desde la plantilla subida
+let pendingInterfazTipo = null;
+
+async function cargarPlantillaInterfaz(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    try {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        if (!rows.length) { alert('La plantilla no tiene filas de datos.'); return; }
+
+        const faltantes = PLANTILLA_INTERFAZ_HEADERS.filter(h => !(h in rows[0]));
+        if (faltantes.length) {
+            alert('A la plantilla le faltan estas columnas: ' + faltantes.join(', '));
+            return;
+        }
+
+        interfazPlantillaRows = rows;
+        document.getElementById('interfaz-plantilla-label').textContent = `${rows.length} fila(s) cargada(s) de "${file.name}"`;
+        document.querySelectorAll('.btn-interfaz').forEach(b => b.disabled = false);
+        renderTablaPlantillaInterfaz();
+    } catch (err) {
+        alert('No se pudo leer el archivo: ' + err.message);
+    } finally {
+        event.target.value = '';
+    }
+}
+function renderTablaPlantillaInterfaz() {
+    const tbody = document.getElementById('tbody-interfaz');
+    tbody.innerHTML = interfazPlantillaRows.map(r => `<tr>
+        <td class="px-4 py-2 whitespace-nowrap">${r['WHS']}</td>
+        <td class="px-4 py-2 whitespace-nowrap font-data-mono">${r['UBICACIÓN']}</td>
+        <td class="px-4 py-2 whitespace-nowrap font-data-mono">${r['CÓDIGO']}</td>
+        <td class="px-4 py-2 whitespace-nowrap font-data-mono">${r['CÓD. BPCS']}</td>
+        <td class="px-4 py-2 whitespace-nowrap font-data-mono">${r['LOTE BPCS']}</td>
+        <td class="px-4 py-2 whitespace-nowrap font-data-mono">${r['LOTE FÍSICO']}</td>
+        <td class="px-4 py-2 whitespace-nowrap font-data-mono">${r['EXPIRA']}</td>
+        <td class="px-4 py-2 text-right">${r['SALDO']}</td>
+        <td class="px-4 py-2">${r['COMENTARIO']}</td>
+    </tr>`).join('');
+}
+
+// Convierte EXPIRA a número YYYYMMDD si viene en ese formato; si no, lo deja tal cual.
+function normalizarExpira(v) {
+    const s = String(v || '').trim();
+    return /^\d{8}$/.test(s) ? Number(s) : s;
+}
+function labelMovimiento(cfg) {
+    return cfg.label.replace(/\s*→\s*/g, ' A ');
+}
+
+// --- TRFMAN: abre modal solo para RCOM ---
 function abrirModalInterfaz(tipo) {
     const cfg = INTERFAZ_CONFIG[tipo];
-    if (!cfg) return;
-    const filas = getFilasParaInterfaz();
-    if (!filas.length) { alert('No hay filas filtradas/seleccionadas para generar la interfaz.'); return; }
+    if (!cfg || !interfazPlantillaRows.length) return;
 
     pendingInterfazTipo = tipo;
     document.getElementById('modal-interfaz-titulo').textContent = 'Generar Interfaz — ' + cfg.label;
     document.getElementById('modal-interfaz-resumen').textContent =
-        `Se generarán ${filas.length} fila(s) con la plantilla ${cfg.grupo}.`;
-
-    const cont = document.getElementById('modal-interfaz-campos');
-    if (cfg.grupo === 'TRFMAN') {
-        cont.innerHTML = `
-            <div class="flex flex-col gap-1">
-                <label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">RCOM</label>
-                <input id="campo-interfaz-RCOM" type="text" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-full outline-none focus:ring-2 focus:ring-primary">
-            </div>
-            <div class="flex flex-col gap-1">
-                <label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">RTHCMT</label>
-                <input id="campo-interfaz-RTHCMT" type="text" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-full outline-none focus:ring-2 focus:ring-primary">
-            </div>`;
-    } else {
-        cont.innerHTML = `
-            <div class="flex flex-col gap-1">
-                <label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">RNDOC</label>
-                <input id="campo-interfaz-RNDOC" type="text" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-full outline-none focus:ring-2 focus:ring-primary">
-            </div>
-            <div class="flex flex-col gap-1">
-                <label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">RDREF</label>
-                <input id="campo-interfaz-RDREF" type="text" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-full outline-none focus:ring-2 focus:ring-primary">
-            </div>
-            <div class="flex flex-col gap-1">
-                <label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">RCCMT</label>
-                <input id="campo-interfaz-RCCMT" type="text" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-full outline-none focus:ring-2 focus:ring-primary">
-            </div>`;
-    }
+        `Se generarán ${interfazPlantillaRows.length} fila(s) con la plantilla TRFMAN.`;
+    document.getElementById('modal-interfaz-campos').innerHTML = `
+        <div class="flex flex-col gap-1">
+            <label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">RCOM</label>
+            <input id="campo-interfaz-RCOM" type="text" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-full outline-none focus:ring-2 focus:ring-primary">
+        </div>`;
     document.getElementById('modal-interfaz').classList.remove('hidden');
 }
 function cerrarModalInterfaz() {
     document.getElementById('modal-interfaz').classList.add('hidden');
     pendingInterfazTipo = null;
 }
-
 function confirmarModalInterfaz() {
     const tipo = pendingInterfazTipo;
     const cfg = INTERFAZ_CONFIG[tipo];
     if (!cfg) return;
+    const rcom = document.getElementById('campo-interfaz-RCOM').value.trim();
 
-    let manual = {};
-    if (cfg.grupo === 'TRFMAN') {
-        manual = {
-            RCOM: document.getElementById('campo-interfaz-RCOM').value.trim(),
-            RTHCMT: document.getElementById('campo-interfaz-RTHCMT').value.trim()
-        };
-    } else {
-        manual = {
-            RNDOC: document.getElementById('campo-interfaz-RNDOC').value.trim(),
-            RDREF: document.getElementById('campo-interfaz-RDREF').value.trim(),
-            RCCMT: document.getElementById('campo-interfaz-RCCMT').value.trim()
-        };
-    }
+    const data = interfazPlantillaRows.map(r => ({
+        'RCCUS': 254,
+        'RBPRD': r['CÓD. BPCS'] || '',
+        'RBLOT': r['LOTE BPCS'] || '',
+        'RQTYT': getSaldoNumerico(r),
+        'RFRWH': cfg.frwh || (r['WHS'] || ''),
+        'RTOWH': cfg.towh || '',
+        'RFRLC': cfg.frlc || (r['UBICACIÓN'] || ''),
+        'RTOLC': cfg.tolc || '',
+        'RNDOC': null,
+        'RCOM': rcom,
+        'RTHCMT': r['COMENTARIO'] || '',
+        'RRSNC': '01'
+    }));
 
-    const filas = getFilasParaInterfaz();
-    let data;
-    if (cfg.grupo === 'TRFMAN') {
-        data = filas.map(r => ({
-            'RCCUS': 254,
-            'RBPRD': r['CODIGO'] || '',
-            'RBLOT': r['LOTE BPCS'] || '',
-            'RQTYT': getSaldoNumerico(r),
-            'RFRWH': cfg.frwh || (r['WHS'] || ''),
-            'RTOWH': cfg.towh || '',
-            'RFRLC': cfg.frlc || (r['UBICACIÓN'] || r['UBICACION'] || ''),
-            'RTOLC': cfg.tolc || '',
-            'RNDOC': '',
-            'RCOM': manual.RCOM,
-            'RTHCMT': manual.RTHCMT,
-            'RRSNC': '01'
-        }));
-    } else {
-        data = filas.map((r, i) => ({
-            'RCCUS': 254,
-            'RSEQ': i + 1,
-            'RCPROD': getCodigoCliente(r),
-            'RLOTE': r['LOTE FISICO'] || '',
-            'RWHS': r['WHS'] || '',
-            'RLOC': r['UBICACIÓN'] || r['UBICACION'] || '',
-            'RQTY': getSaldoNumerico(r),
-            'RTRAN': cfg.rtran,
-            'RDEXP': /^\d{8}$/.test(String(r['EXPIRA'] || '').trim()) ? Number(r['EXPIRA']) : (r['EXPIRA'] || ''),
-            'RNRANA': '',
-            'RNDOC': manual.RNDOC,
-            'RDREF': manual.RDREF,
-            'RCCMT': manual.RCCMT,
-            'RRCDE': '02'
-        }));
-    }
+    generarYDescargarXLS(tipo, cfg, data, 'TRFMAN');
+    guardarHistoricoInterfaz(tipo, cfg, data);
+    guardarTicket(cfg.label, interfazPlantillaRows[0]['COMENTARIO'] || '');
+    cerrarModalInterfaz();
+}
 
+// --- SIGTRA/SIWTRA: ya no requieren modal, todo sale de la plantilla o es fijo ---
+function generarInterfazDirecta(tipo) {
+    const cfg = INTERFAZ_CONFIG[tipo];
+    if (!cfg || !interfazPlantillaRows.length) return;
+
+    const data = interfazPlantillaRows.map((r, i) => ({
+        'RCCUS': 254,
+        'RSEQ': i + 1,
+        'RCPROD': r['CÓDIGO'] || '',
+        'RLOTE': r['LOTE FÍSICO'] || '',
+        'RWHS': r['WHS'] || '',
+        'RLOC': r['UBICACIÓN'] || '',
+        'RQTY': getSaldoNumerico(r),
+        'RTRAN': cfg.rtran,
+        'RDEXP': normalizarExpira(r['EXPIRA']),
+        'RNRANA': null,
+        'RNDOC': r['COMENTARIO'] || '',
+        'RDREF': r['COMENTARIO'] || '',
+        'RCCMT': cfg.rccmt,
+        'RRCDE': '02'
+    }));
+
+    generarYDescargarXLS(tipo, cfg, data, tipo);
+    guardarHistoricoInterfaz(tipo, cfg, data);
+    guardarTicket(cfg.label, interfazPlantillaRows[0]['COMENTARIO'] || '');
+}
+
+function generarYDescargarXLS(tipo, cfg, data, nombreHoja) {
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, cfg.grupo === 'TRFMAN' ? 'TRFMAN' : tipo);
+    XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
     const fecha = new Date().toISOString().slice(0,10).replace(/-/g,'');
     const hora = new Date().toTimeString().slice(0,5).replace(':','');
     XLSX.writeFile(wb, `${tipo}_${fecha}_${hora}.xlsx`);
-
-    guardarHistoricoInterfaz(tipo, cfg, data, manual);
-    cerrarModalInterfaz();
 }
 
 // Guarda el histórico en el Sheet correspondiente (best-effort: si falla o no
 // está configurado el Apps Script, avisa pero NO revierte la descarga del XLS).
-async function guardarHistoricoInterfaz(tipo, cfg, filas, manual) {
+async function guardarHistoricoInterfaz(tipo, cfg, filas) {
     const url = cfg.grupo === 'TRFMAN' ? APPS_SCRIPT_URL_HISTORICO_1 : APPS_SCRIPT_URL_HISTORICO_2;
     const action = cfg.grupo === 'TRFMAN' ? 'historico1' : 'historico2';
     if (!url) {
@@ -1209,9 +1516,8 @@ async function guardarHistoricoInterfaz(tipo, cfg, filas, manual) {
                 token: UPLOAD_TOKEN,
                 action,
                 tipo,
-                grupo: cfg.grupo,
-                fecha: new Date().toISOString(),
-                manual,
+                plantilla: cfg.grupo,
+                movimiento: labelMovimiento(cfg),
                 rows: filas
             })
         });
@@ -1221,6 +1527,75 @@ async function guardarHistoricoInterfaz(tipo, cfg, filas, manual) {
         console.warn('No se pudo guardar el histórico:', err.message);
     }
 }
+
+// =========================================================
+// 3) TICKETS — una fila por cada vez que se genera una interfaz
+// =========================================================
+// Best-effort: si falla, no revierte la generación del XLS ni el histórico.
+async function guardarTicket(interfaz, comentario) {
+    try {
+        const resp = await fetch(APPS_SCRIPT_URL_SALDO, {
+            method: 'POST',
+            body: JSON.stringify({ token: UPLOAD_TOKEN, action: 'agregarTicket', interfaz, comentario })
+        });
+        const result = await resp.json();
+        if (!result.ok) console.warn('No se pudo registrar el ticket:', result.error);
+        else if (document.querySelector('.section-view.active')?.id === 'view-tickets') cargarTickets();
+    } catch (err) {
+        console.warn('No se pudo registrar el ticket:', err.message);
+    }
+}
+
+async function cargarTickets() {
+    const tbody = document.getElementById('tbody-tickets');
+    tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-6 text-center text-on-surface-variant">Cargando...</td></tr>';
+    try {
+        const url = `${APPS_SCRIPT_URL_SALDO}?token=${encodeURIComponent(UPLOAD_TOKEN)}&action=listarTickets`;
+        const resp = await fetch(url);
+        const result = await resp.json();
+        if (!result.ok) { tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-error">${result.error || 'Error al cargar.'}</td></tr>`; return; }
+        renderTickets(result.tickets || []);
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-error">No se pudo conectar: ${err.message}</td></tr>`;
+    }
+}
+
+function renderTickets(tickets) {
+    const tbody = document.getElementById('tbody-tickets');
+    if (!tickets.length) { tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-6 text-center text-on-surface-variant">Aún no hay tickets registrados.</td></tr>'; return; }
+    // Más recientes primero
+    const ordenados = [...tickets].reverse();
+    tbody.innerHTML = ordenados.map(t => `<tr>
+        <td class="px-4 py-2 whitespace-nowrap">${t.fecha || ''}</td>
+        <td class="px-4 py-2 whitespace-nowrap">${t.hora || ''}</td>
+        <td class="px-4 py-2 whitespace-nowrap font-bold">${t.interfaz || ''}</td>
+        <td class="px-4 py-2">${t.comentario || ''}</td>
+        <td class="px-4 py-2">
+            <input type="text" value="${(t.ticket || '').replace(/"/g,'&quot;')}" data-id="${t.id}"
+                onblur="actualizarTicketCampo(this)"
+                class="text-sm border border-outline-variant rounded-lg px-2 py-1 bg-surface-container-lowest w-full outline-none focus:ring-2 focus:ring-primary">
+        </td>
+    </tr>`).join('');
+}
+
+async function actualizarTicketCampo(input) {
+    const id = input.dataset.id;
+    const ticket = input.value.trim();
+    input.classList.add('opacity-60');
+    try {
+        const resp = await fetch(APPS_SCRIPT_URL_SALDO, {
+            method: 'POST',
+            body: JSON.stringify({ token: UPLOAD_TOKEN, action: 'actualizarTicket', id, ticket })
+        });
+        const result = await resp.json();
+        if (!result.ok) alert('No se pudo guardar el ticket: ' + (result.error || ''));
+    } catch (err) {
+        alert('No se pudo guardar el ticket: ' + err.message);
+    } finally {
+        input.classList.remove('opacity-60');
+    }
+}
+
 
 // =========================================================
 // WIDGET DASHBOARD — Ocupabilidad de hoy + botón Alimentar
