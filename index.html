@@ -1268,7 +1268,7 @@ const INTERFAZ_CONFIG = {
     IV_CG:  { grupo: 'TRFMAN', label: 'IV → CG', frwh: 'IV', towh: 'CG', frlc: 'PISO',   tolc: '271001' },
     CG_TR:  { grupo: 'TRFMAN', label: 'CG → TR', frwh: 'CG', towh: 'TR', frlc: '271001', tolc: 'PISO' },
     TR_PD:  { grupo: 'TRFMAN', label: 'TR → PD', frwh: 'TR', towh: 'PD', frlc: 'PISO',   tolc: 'PISO' },
-    PD_LT:  { grupo: 'TRFMAN', label: 'PD → LT', frwh: 'CG', towh: 'TR', frlc: 'PISO',   tolc: 'ACON26' },
+    PD_LT:  { grupo: 'TRFMAN', label: 'PD → LT', frwh: 'PD', towh: 'LT', frlc: 'PISO',   tolc: 'ACON26' },
     SIGTRA: { grupo: 'SIGTRA', label: 'SIGTRA', rtran: 'II', rccmt: 'TRABAJO LAB SIGNIA -EGRESO' },
     SIWTRA: { grupo: 'SIWTRA', label: 'SIWTRA', rtran: 'RR', rccmt: 'TRABAJO LAB SIGNIA -INGRESO' }
 };
@@ -1474,8 +1474,8 @@ function generarInterfazDirecta(tipo) {
         'RSEQ': i + 1,
         'RCPROD': r['CÓDIGO'] || '',
         'RLOTE': r['LOTE FÍSICO'] || '',
-        'RWHS': r['WHS'] || '',
-        'RLOC': r['UBICACIÓN'] || '',
+        'RWHS': 'CG',
+        'RLOC': '271001',
         'RQTY': getSaldoNumerico(r),
         'RTRAN': cfg.rtran,
         'RDEXP': normalizarExpira(r['EXPIRA']),
@@ -1571,7 +1571,7 @@ function renderTickets(tickets) {
         <td class="px-4 py-2 whitespace-nowrap font-bold">${t.interfaz || ''}</td>
         <td class="px-4 py-2">${t.comentario || ''}</td>
         <td class="px-4 py-2">
-            <input type="text" value="${(t.ticket || '').replace(/"/g,'&quot;')}" data-id="${t.id}"
+            <input type="text" value="${String(t.ticket || '').replace(/"/g,'&quot;')}" data-id="${t.id}"
                 onblur="actualizarTicketCampo(this)"
                 class="text-sm border border-outline-variant rounded-lg px-2 py-1 bg-surface-container-lowest w-full outline-none focus:ring-2 focus:ring-primary">
         </td>
