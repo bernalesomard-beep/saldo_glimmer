@@ -1357,7 +1357,7 @@ function descargarPlantillaInterfazSaldo() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Plantilla Interfaz');
     const fecha = new Date().toISOString().slice(0,10).replace(/-/g,'');
-    XLSX.writeFile(wb, `plantilla_interfaz_${fecha}.xlsx`);
+    XLSX.writeFile(wb, `plantilla_interfaz_${fecha}.xls`, { bookType: 'xls' });
 }
 
 // =========================================================
@@ -1497,7 +1497,7 @@ function generarYDescargarXLS(tipo, cfg, data, nombreHoja) {
     XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
     const fecha = new Date().toISOString().slice(0,10).replace(/-/g,'');
     const hora = new Date().toTimeString().slice(0,5).replace(':','');
-    XLSX.writeFile(wb, `${tipo}_${fecha}_${hora}.xlsx`);
+    XLSX.writeFile(wb, `${tipo}_${fecha}_${hora}.xls`, { bookType: 'xls' });
 }
 
 // Guarda el histórico en el Sheet correspondiente (best-effort: si falla o no
