@@ -446,17 +446,15 @@
 </div>
 <p class="px-6 pt-3 text-xs text-on-surface-variant">Sube la plantilla que descargaste desde Saldo (botón "Generar Interfaz" → "Descargar plantilla"). Cabeceras esperadas: WHS, UBICACIÓN, CÓDIGO, CÓD. BPCS, LOTE BPCS, LOTE FÍSICO, EXPIRA, SALDO, COMENTARIO.</p>
 <div class="px-6 py-3 border-b border-outline-variant bg-surface-container-low/30 flex flex-wrap items-center gap-2">
-<span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide mr-1">TRFMAN</span>
+<span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide mr-1">INTERFAZ</span>
 <button onclick="abrirModalInterfaz('LT_PP')" disabled class="btn-interfaz px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10 disabled:opacity-40 disabled:cursor-not-allowed">LT → PP</button>
 <button onclick="abrirModalInterfaz('PP_IV')" disabled class="btn-interfaz px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10 disabled:opacity-40 disabled:cursor-not-allowed">PP → IV</button>
 <button onclick="abrirModalInterfaz('IV_CG')" disabled class="btn-interfaz px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10 disabled:opacity-40 disabled:cursor-not-allowed">IV → CG</button>
+<button onclick="generarInterfazDirecta('SIGTRA')" disabled class="btn-interfaz px-3 py-1.5 bg-tertiary-container text-on-tertiary-container rounded-lg text-xs font-bold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed">SIGTRA</button>
+<button onclick="generarInterfazDirecta('SIWTRA')" disabled class="btn-interfaz px-3 py-1.5 bg-tertiary-container text-on-tertiary-container rounded-lg text-xs font-bold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed">SIWTRA</button>
 <button onclick="abrirModalInterfaz('CG_TR')" disabled class="btn-interfaz px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10 disabled:opacity-40 disabled:cursor-not-allowed">CG → TR</button>
 <button onclick="abrirModalInterfaz('TR_PD')" disabled class="btn-interfaz px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10 disabled:opacity-40 disabled:cursor-not-allowed">TR → PD</button>
 <button onclick="abrirModalInterfaz('PD_LT')" disabled class="btn-interfaz px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10 disabled:opacity-40 disabled:cursor-not-allowed">PD → LT</button>
-<span class="w-px h-5 bg-outline-variant mx-1"></span>
-<span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide mr-1">SIGTRA/SIWTRA</span>
-<button onclick="generarInterfazDirecta('SIGTRA')" disabled class="btn-interfaz px-3 py-1.5 bg-tertiary-container text-on-tertiary-container rounded-lg text-xs font-bold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed">SIGTRA</button>
-<button onclick="generarInterfazDirecta('SIWTRA')" disabled class="btn-interfaz px-3 py-1.5 bg-tertiary-container text-on-tertiary-container rounded-lg text-xs font-bold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed">SIWTRA</button>
 <span class="text-xs text-on-surface-variant ml-auto" id="interfaz-plantilla-label">Ninguna plantilla cargada</span>
 </div>
 <div class="overflow-auto flex-1" style="max-height: calc(100vh - 320px);">
@@ -499,6 +497,7 @@
 <th class="px-4 py-3 border-b border-outline-variant">INTERFAZ</th>
 <th class="px-4 py-3 border-b border-outline-variant">COMENTARIO</th>
 <th class="px-4 py-3 border-b border-outline-variant w-48">TICKET</th>
+<th class="px-4 py-3 border-b border-outline-variant">NAME SEQUEL</th>
 </tr>
 </thead>
 <tbody id="tbody-tickets" class="divide-y divide-surface-variant font-body-md text-sm"></tbody>
@@ -1923,21 +1922,42 @@ async function guardarTicket(interfaz, comentario) {
 
 async function cargarTickets() {
     const tbody = document.getElementById('tbody-tickets');
-    tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-6 text-center text-on-surface-variant">Cargando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-6 text-center text-on-surface-variant">Cargando...</td></tr>';
     try {
         const url = `${APPS_SCRIPT_URL_SALDO}?token=${encodeURIComponent(UPLOAD_TOKEN)}&action=listarTickets`;
         const resp = await fetch(url);
         const result = await resp.json();
-        if (!result.ok) { tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-error">${result.error || 'Error al cargar.'}</td></tr>`; return; }
+        if (!result.ok) { tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-6 text-center text-error">${result.error || 'Error al cargar.'}</td></tr>`; return; }
         renderTickets(result.tickets || []);
     } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-error">No se pudo conectar: ${err.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-6 text-center text-error">No se pudo conectar: ${err.message}</td></tr>`;
     }
+}
+
+// Name Sequel según el tipo de interfaz (la clave es el label guardado en TICKETS,
+// p. ej. "LT → PP"; se normaliza para tolerar "LT A PP", "LT->PP", etc.)
+const NAME_SEQUEL = {
+    'LT PP': 'UR1OT26GRR | UR1OT26OPR | UR1OT27DFR | UR1OT27DNR',
+    'PP IV': 'UR1OT22TR',
+    'IV CG': 'UR1OT23TR',
+    'SIGTRA': 'UR1OT025PR',
+    'SIWTRA': 'UR1OT028NR',
+    'CG TR': 'UR1OT023TR',
+    'TR PD': 'UR1OT29TR',
+    'PD LT': 'UR1OT30GRR | UR1OT30OPR | UR1OT24DFR | UR1OT24DNR'
+};
+function nameSequelDe(interfaz) {
+    const k = String(interfaz || '').toUpperCase()
+        .replace(/→|->|_/g, ' ')
+        .replace(/\s+A\s+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return NAME_SEQUEL[k] || '';
 }
 
 function renderTickets(tickets) {
     const tbody = document.getElementById('tbody-tickets');
-    if (!tickets.length) { tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-6 text-center text-on-surface-variant">Aún no hay tickets registrados.</td></tr>'; return; }
+    if (!tickets.length) { tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-6 text-center text-on-surface-variant">Aún no hay tickets registrados.</td></tr>'; return; }
     // Más recientes primero
     const ordenados = [...tickets].reverse();
     tbody.innerHTML = ordenados.map(t => `<tr>
@@ -1950,6 +1970,7 @@ function renderTickets(tickets) {
                 onblur="actualizarTicketCampo(this)"
                 class="text-sm border border-outline-variant rounded-lg px-2 py-1 bg-surface-container-lowest w-full outline-none focus:ring-2 focus:ring-primary">
         </td>
+        <td class="px-4 py-2 whitespace-nowrap font-mono text-xs">${nameSequelDe(t.interfaz)}</td>
     </tr>`).join('');
 }
 
