@@ -117,6 +117,10 @@
 <span class="material-symbols-outlined">inventory_2</span>
 <span>Saldo</span>
 </a>
+<a data-section="movimientos" class="nav-link text-on-primary-container hover:bg-surface-variant/20 rounded-lg px-4 py-3 flex items-center gap-3 transition-colors cursor-pointer">
+<span class="material-symbols-outlined">sync_alt</span>
+<span>Movimientos</span>
+</a>
 <a data-section="interfaz" class="nav-link text-on-primary-container hover:bg-surface-variant/20 rounded-lg px-4 py-3 flex items-center gap-3 transition-colors cursor-pointer">
 <span class="material-symbols-outlined">swap_horiz</span>
 <span>Generar Interfaz</span>
@@ -349,6 +353,85 @@
 </section>
 </div>
 
+<!-- ================= SECCIÓN MOVIMIENTOS ================= -->
+<div id="view-movimientos" class="section-view flex-1 space-y-6">
+<section class="flex items-center justify-between">
+<span class="text-body-md text-on-surface-variant" id="mov-updated-label">—</span>
+<span class="text-body-md text-on-surface-variant" id="mov-resumen-label"></span>
+</section>
+
+<section class="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden flex flex-col shadow-sm flex-1">
+<div class="px-6 py-4 border-b border-outline-variant flex items-center justify-between flex-wrap gap-3">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Movimientos</h3>
+<div class="flex items-center gap-2 flex-wrap">
+<button onclick="exportarMovXLSX()" class="flex items-center gap-2 px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10">
+<span class="material-symbols-outlined text-[18px]">download</span>Exportar
+</button>
+<button onclick="exportarMovTRFMAN()" class="flex items-center gap-2 px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-bold active:scale-95">
+<span class="material-symbols-outlined text-[18px]">table_view</span>TRFMAN
+</button>
+</div>
+</div>
+<div class="px-6 py-3 border-b border-outline-variant bg-surface-container-low/50 flex flex-wrap items-end gap-3">
+<div class="flex flex-col gap-1">
+<label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">Desde</label>
+<input id="filtro-mov-desde" onchange="aplicarFiltroMov()" type="date" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-40 outline-none focus:ring-2 focus:ring-primary">
+</div>
+<div class="flex flex-col gap-1">
+<label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">Hasta</label>
+<input id="filtro-mov-hasta" onchange="aplicarFiltroMov()" type="date" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-40 outline-none focus:ring-2 focus:ring-primary">
+</div>
+<div class="flex flex-col gap-1">
+<label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">Estado</label>
+<select id="filtro-mov-estado" onchange="aplicarFiltroMov()" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-36 outline-none focus:ring-2 focus:ring-primary">
+<option value="">Todos</option>
+<option value="pendiente">Pendiente</option>
+<option value="trasladado">Trasladado</option>
+</select>
+</div>
+<div class="flex flex-col gap-1">
+<label class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide">Buscar</label>
+<input id="filtro-mov-texto" oninput="aplicarFiltroMovDebounced()" class="text-sm border border-outline-variant rounded-lg px-2 py-1.5 bg-surface-container-lowest w-56 outline-none focus:ring-2 focus:ring-primary" type="text" placeholder="código, lote, ubicación, usuario...">
+</div>
+<button onclick="limpiarFiltrosMov()" class="flex items-center gap-1 px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10">
+<span class="material-symbols-outlined text-[16px]">filter_alt_off</span>Limpiar
+</button>
+</div>
+<div class="px-6 py-3 border-b border-outline-variant bg-surface-container-low/30 flex flex-wrap items-center gap-3">
+<span class="text-xs text-on-surface-variant" id="mov-trfmas-label">—</span>
+<button onclick="limpiarSeleccionMov()" class="text-xs font-bold text-primary hover:underline">Limpiar selección</button>
+</div>
+<div class="overflow-auto flex-1" style="max-height: calc(100vh - 470px);">
+<table class="w-full text-left border-collapse min-w-[1500px]">
+<thead class="bg-surface-container-low sticky top-0 z-20">
+<tr class="text-table-header font-table-header text-on-surface-variant">
+<th class="px-4 py-3 border-b border-outline-variant w-10"><input type="checkbox" id="chk-all-mov" onclick="toggleMovAll(this.checked)"></th>
+<th class="px-4 py-3 border-b border-outline-variant">FECHA / HORA</th>
+<th class="px-4 py-3 border-b border-outline-variant">COD</th>
+<th class="px-4 py-3 border-b border-outline-variant">CÓD. BPCS</th>
+<th class="px-4 py-3 border-b border-outline-variant">LOTE BPCS</th>
+<th class="px-4 py-3 border-b border-outline-variant text-right">CANTIDAD</th>
+<th class="px-4 py-3 border-b border-outline-variant text-center">WHS ORIGEN</th>
+<th class="px-4 py-3 border-b border-outline-variant text-center">WHS DESTINO</th>
+<th class="px-4 py-3 border-b border-outline-variant">UBIC. ORIGEN</th>
+<th class="px-4 py-3 border-b border-outline-variant">UBIC. DESTINO</th>
+<th class="px-4 py-3 border-b border-outline-variant">DOC</th>
+<th class="px-4 py-3 border-b border-outline-variant">USUARIO</th>
+<th class="px-4 py-3 border-b border-outline-variant text-center">ESTADO</th>
+</tr>
+</thead>
+<tbody id="tbody-mov" class="divide-y divide-surface-variant font-body-md text-sm">
+<tr><td colspan="13" class="px-4 py-6 text-center text-on-surface-variant">Cargando movimientos...</td></tr>
+</tbody>
+</table>
+</div>
+<div class="px-6 py-3 border-t border-outline-variant bg-surface-container-low flex justify-between items-center">
+<div class="text-xs text-on-surface-variant font-medium" id="mov-count-label">Cargando...</div>
+<button id="btn-cargar-mas-mov" onclick="renderChunkMov()" class="px-4 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10 hidden">Cargar más filas</button>
+</div>
+</section>
+</div>
+
 <!-- ================= SECCIÓN GENERAR INTERFAZ ================= -->
 <div id="view-interfaz" class="section-view flex-1 space-y-6">
 <section class="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden flex flex-col shadow-sm flex-1">
@@ -564,6 +647,7 @@
 // CONFIGURACIÓN
 // =========================================================
 const URL_SALDO        = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS0j0wNt1izjNQdp1SAQYbtVz2n1hiZkUVvGC8Q4AbGgxOoITwNMbxUJ4KrKcYyM8QhIF4srhmNeYND/pub?gid=273620597&single=true&output=csv';
+const URL_MOV          = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS0j0wNt1izjNQdp1SAQYbtVz2n1hiZkUVvGC8Q4AbGgxOoITwNMbxUJ4KrKcYyM8QhIF4srhmNeYND/pub?gid=2101441845&single=true&output=csv';
 const URL_MAESTRA      = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQMPc1HwfWbpNMyRGWD1vrrXsGgPCLEBJWuW7cgciAttxNHTH_ZwOdv5GnApKKdk31Pgoxm32TRX0gq/pub?gid=649948627&single=true&output=csv';
 const URL_BODEGAS      = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQMPc1HwfWbpNMyRGWD1vrrXsGgPCLEBJWuW7cgciAttxNHTH_ZwOdv5GnApKKdk31Pgoxm32TRX0gq/pub?gid=1981221214&single=true&output=csv';
 const URL_OCUPABILIDAD = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQMPc1HwfWbpNMyRGWD1vrrXsGgPCLEBJWuW7cgciAttxNHTH_ZwOdv5GnApKKdk31Pgoxm32TRX0gq/pub?gid=297551892&single=true&output=csv';
@@ -745,7 +829,7 @@ async function cargarTodo(force = false) {
     icon.classList.add('spin');
     iconHeader.classList.add('spin');
     try {
-        await Promise.all([cargarSaldo(force), cargarMaestra(force), cargarBodegas(force), cargarOcupabilidad(force)]);
+        await Promise.all([cargarSaldo(force), cargarMaestra(force), cargarBodegas(force), cargarOcupabilidad(force), cargarMov(force)]);
         buildMaestraIndex();
         renderBodegas();
         renderResumen();
@@ -753,12 +837,14 @@ async function cargarTodo(force = false) {
         poblarFiltroWHS();
         poblarOpcionesDropdownMulti();
         aplicarFiltroSaldo();
+        aplicarFiltroMov();
         renderMaestra();
         renderOcupabilidad();
         updateOcupabilidadWidget();
         const horaActual = new Date().toLocaleTimeString('es-PE');
         document.getElementById('last-updated').textContent = 'Actualizado: ' + horaActual;
         document.getElementById('saldo-updated-label').textContent = 'Última carga: ' + horaActual;
+        document.getElementById('mov-updated-label').textContent = 'Última carga: ' + horaActual;
         document.getElementById('dashboard-updated-label').textContent = 'Última carga: ' + horaActual;
     } catch (err) {
         alert('Error cargando datos: ' + err.message);
@@ -1055,6 +1141,294 @@ function toggleSaldoAll(checked) {
 }
 
 // =========================================================
+// MOVIMIENTOS
+// Hoja: ID, REGISTRO, COD, RCCUS, RBPRD, RBLOT, RQTYT, RFRWH, RTOWH,
+//       RFRLC, RTOLC, RNDOC, RCOM, RTHCMT, RRSNC, COMENTARIO
+// COMENTARIO = "Trasladado" cuando el movimiento ya salió en un TRFMAN.
+// =========================================================
+let dataMov = [];
+let movSearchIdx = [];        // texto en minúsculas por fila (paralelo a dataMov)
+let movFiltrado = [];         // filas filtradas, en el orden de la hoja (antiguo -> reciente)
+let movRenderCount = 0;
+let movError = '';
+let selectedMovIds = new Set();
+
+// Cabeceras del archivo TRFMAN, EN ESTE ORDEN (igual al modelo TRFMAN.XLS).
+// Solo salen estas columnas; para cambiar el orden, reordena esta lista.
+const TRFMAN_COLUMNAS = ['RCCUS', 'RBPRD', 'RBLOT', 'RQTYT', 'RFRWH', 'RTOWH', 'RFRLC', 'RTOLC', 'RNDOC', 'RCOM', 'RTHCMT', 'RRSNC'];
+// Numéricas según el modelo; el resto va como texto (respeta ceros a la izquierda)
+const TRFMAN_TIPO_NUM = ['RCCUS', 'RQTYT'];
+const TRFMAN_ARCHIVO  = 'TRFMAN.xls';
+const TRFMAN_HOJA     = 'TRFMAN';
+
+function movEsc(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function movEsTrasladado(r) {
+    return String(r['COMENTARIO'] || '').trim().toLowerCase() === 'trasladado';
+}
+function movCantidad(r) {
+    return parseFloat(String(r['RQTYT'] || '0').replace(/,/g, '')) || 0;
+}
+// "21/07/2026 14:20:26" -> "2026-07-21" (para comparar con <input type="date">)
+function movFechaISO(reg) {
+    const m = String(reg || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '';
+}
+function construirIndiceMov() {
+    movSearchIdx = dataMov.map(r => Object.values(r).join(' ').toLowerCase());
+}
+
+// El CSV publicado tarda 1-2 min en reflejar lo que escribe el Apps Script.
+// Guardamos los IDs recién marcados para que un refresco de por medio no los devuelva a Pendiente.
+const movTrasladadoOverride = {};          // id -> timestamp
+const MOV_OVERRIDE_TTL = 5 * 60 * 1000;
+function aplicarOverridesTrasladado() {
+    const now = Date.now();
+    Object.keys(movTrasladadoOverride).forEach(id => {
+        if (now - movTrasladadoOverride[id] > MOV_OVERRIDE_TTL) delete movTrasladadoOverride[id];
+    });
+    if (!Object.keys(movTrasladadoOverride).length) return;
+    dataMov.forEach(r => { if (movTrasladadoOverride[r['ID']] !== undefined) r['COMENTARIO'] = 'Trasladado'; });
+}
+
+// ---------- Carga ----------
+// No lanza error: si falla, la sección lo muestra y el resto del dashboard sigue cargando.
+async function cargarMov(force = false) {
+    try {
+        const text = await fetchCSV(URL_MOV, force);
+        const { headers, rows } = parseCSV(text);
+        dataMov = toObjects(headers, rows);
+        aplicarOverridesTrasladado();
+        construirIndiceMov();
+        movError = '';
+        const ids = new Set(dataMov.map(r => r['ID']));
+        selectedMovIds.forEach(id => { if (!ids.has(id)) selectedMovIds.delete(id); });
+    } catch (err) {
+        dataMov = []; movSearchIdx = [];
+        movError = err.message;
+    }
+}
+
+// ---------- Filtros ----------
+function aplicarFiltroMov() {
+    const tokens = [
+        document.getElementById('global-search').value,
+        document.getElementById('filtro-mov-texto').value
+    ].join(' ').toLowerCase().split(/\s+/).filter(Boolean);
+    const desde  = document.getElementById('filtro-mov-desde').value;
+    const hasta  = document.getElementById('filtro-mov-hasta').value;
+    const estado = document.getElementById('filtro-mov-estado').value;
+
+    movFiltrado = dataMov.filter((r, i) => {
+        if (tokens.length && !tokens.every(t => movSearchIdx[i].includes(t))) return false;
+        if (desde || hasta) {
+            const f = movFechaISO(r['REGISTRO']);
+            if (!f) return false;
+            if (desde && f < desde) return false;
+            if (hasta && f > hasta) return false;
+        }
+        if (estado) {
+            const tras = movEsTrasladado(r);
+            if (estado === 'trasladado' && !tras) return false;
+            if (estado === 'pendiente' && tras) return false;
+        }
+        return true;
+    });
+    renderMov();
+}
+const aplicarFiltroMovDebounced = debounce(aplicarFiltroMov, 300);
+
+function limpiarFiltrosMov() {
+    ['filtro-mov-desde', 'filtro-mov-hasta', 'filtro-mov-estado', 'filtro-mov-texto']
+        .forEach(id => { document.getElementById(id).value = ''; });
+    aplicarFiltroMov();
+}
+
+// ---------- Render (por tandas, más recientes primero) ----------
+function renderMov() {
+    const tbody = document.getElementById('tbody-mov');
+    movRenderCount = 0;
+    tbody.innerHTML = '';
+    if (movError) {
+        tbody.innerHTML = `<tr><td colspan="13" class="px-4 py-6 text-center text-error">No se pudieron cargar los movimientos: ${movEsc(movError)}</td></tr>`;
+    } else if (!movFiltrado.length) {
+        tbody.innerHTML = '<tr><td colspan="13" class="px-4 py-6 text-center text-on-surface-variant">Sin movimientos para los filtros seleccionados</td></tr>';
+    } else {
+        renderChunkMov();
+        return;
+    }
+    actualizarEtiquetasMov();
+}
+
+function movChipWhs(whs) {
+    if (!whs) return '<span class="text-on-surface-variant text-xs">—</span>';
+    const st = BODEGA_STYLE[whs.toUpperCase()] || DEFAULT_STYLE;
+    return `<span class="${st.chip} px-2 py-0.5 rounded text-[11px] font-bold font-data-mono">${movEsc(whs)}</span>`;
+}
+
+function renderChunkMov() {
+    const tbody = document.getElementById('tbody-mov');
+    const total = movFiltrado.length;
+    const end = Math.min(movRenderCount + PAGE_SIZE, total);
+    const frag = document.createDocumentFragment();
+
+    for (let k = movRenderCount; k < end; k++) {
+        const r = movFiltrado[total - 1 - k];            // el más reciente arriba
+        const id = r['ID'] || '';
+        const checked = selectedMovIds.has(id) ? 'checked' : '';
+        const badge = movEsTrasladado(r)
+            ? '<span class="bg-green-100 text-green-800 px-2 py-0.5 rounded text-[10px] font-bold">TRASLADADO</span>'
+            : '<span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[10px] font-bold">PENDIENTE</span>';
+        const tr = document.createElement('tr');
+        tr.className = (k % 2 ? '' : 'bg-surface-container-low/30') + ' hover:bg-surface-variant/10 transition-colors';
+        tr.innerHTML = `
+            <td class="px-4 py-2"><input type="checkbox" class="chk-mov-row" data-id="${movEsc(id)}" ${checked} onclick="toggleMovRow('${movEsc(id)}', this.checked)"></td>
+            <td class="px-4 py-2 font-data-mono whitespace-nowrap">${movEsc(r['REGISTRO'])}</td>
+            <td class="px-4 py-2 font-data-mono">${movEsc(r['COD']) || '—'}</td>
+            <td class="px-4 py-2 font-data-mono">${movEsc(r['RBPRD'])}</td>
+            <td class="px-4 py-2 font-data-mono">${movEsc(r['RBLOT'])}</td>
+            <td class="px-4 py-2 text-right font-bold text-on-surface">${movCantidad(r).toLocaleString('es-PE')}</td>
+            <td class="px-4 py-2 text-center">${movChipWhs(r['RFRWH'])}</td>
+            <td class="px-4 py-2 text-center">${movChipWhs(r['RTOWH'])}</td>
+            <td class="px-4 py-2 font-data-mono">${movEsc(r['RFRLC'])}</td>
+            <td class="px-4 py-2 font-data-mono">${movEsc(r['RTOLC'])}</td>
+            <td class="px-4 py-2 font-data-mono">${movEsc(r['RNDOC'])}</td>
+            <td class="px-4 py-2">${movEsc(r['RCOM'])}</td>
+            <td class="px-4 py-2 text-center">${badge}</td>`;
+        frag.appendChild(tr);
+    }
+    tbody.appendChild(frag);
+    movRenderCount = end;
+    actualizarEtiquetasMov();
+}
+
+function actualizarEtiquetasMov() {
+    const fmt = n => n.toLocaleString('es-PE');
+    const sel = selectedMovIds.size;
+    document.getElementById('mov-count-label').textContent =
+        `Mostrando ${fmt(movRenderCount)} de ${fmt(movFiltrado.length)} registros` + (sel ? ` • ${fmt(sel)} seleccionados` : '');
+    document.getElementById('mov-trfmas-label').textContent = sel
+        ? `TRFMAN: ${fmt(sel)} fila(s) seleccionadas — se marcarán como Trasladado al exportar`
+        : `TRFMAN: ${fmt(movFiltrado.length)} fila(s) filtradas — no se marcan como Trasladado (selecciona filas para marcarlas)`;
+    const pend = dataMov.filter(r => !movEsTrasladado(r)).length;
+    document.getElementById('mov-resumen-label').textContent =
+        dataMov.length ? `${fmt(pend)} pendientes de traslado, ${fmt(dataMov.length - pend)} trasladados` : '';
+    document.getElementById('btn-cargar-mas-mov').classList.toggle('hidden', movRenderCount >= movFiltrado.length);
+    document.getElementById('chk-all-mov').checked =
+        movFiltrado.length > 0 && movFiltrado.every(r => selectedMovIds.has(r['ID']));
+}
+
+// ---------- Selección ----------
+function toggleMovRow(id, checked) {
+    if (checked) selectedMovIds.add(id); else selectedMovIds.delete(id);
+    actualizarEtiquetasMov();
+}
+// Selecciona TODAS las filas filtradas (no solo las que ya están pintadas)
+function toggleMovAll(checked) {
+    movFiltrado.forEach(r => { if (checked) selectedMovIds.add(r['ID']); else selectedMovIds.delete(r['ID']); });
+    document.querySelectorAll('#tbody-mov .chk-mov-row').forEach(c => { c.checked = checked; });
+    actualizarEtiquetasMov();
+}
+function limpiarSeleccionMov() {
+    selectedMovIds.clear();
+    document.querySelectorAll('#tbody-mov .chk-mov-row').forEach(c => { c.checked = false; });
+    actualizarEtiquetasMov();
+}
+
+// ---------- Exportar (vista legible, sin marcar nada) ----------
+function exportarMovXLSX() {
+    const base = selectedMovIds.size ? dataMov.filter(r => selectedMovIds.has(r['ID'])) : movFiltrado;
+    if (!base.length) { alert('No hay movimientos para exportar.'); return; }
+    const data = base.map(r => ({
+        'FECHA / HORA': r['REGISTRO'] || '',
+        'COD': r['COD'] || '',
+        'CÓD. BPCS': r['RBPRD'] || '',
+        'LOTE BPCS': r['RBLOT'] || '',
+        'CANTIDAD': movCantidad(r),
+        'WHS ORIGEN': r['RFRWH'] || '',
+        'WHS DESTINO': r['RTOWH'] || '',
+        'UBIC. ORIGEN': r['RFRLC'] || '',
+        'UBIC. DESTINO': r['RTOLC'] || '',
+        'DOC': r['RNDOC'] || '',
+        'USUARIO': r['RCOM'] || '',
+        'ESTADO': movEsTrasladado(r) ? 'Trasladado' : 'Pendiente'
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Movimientos');
+    const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    XLSX.writeFile(wb, `movimientos_${fecha}.xlsx`);
+}
+
+// ---------- TRFMAN: columnas en el orden de TRFMAN_COLUMNAS, tipadas ----------
+function exportarMovTRFMAN() {
+    const conSeleccion = selectedMovIds.size > 0;
+    const source = conSeleccion ? dataMov.filter(r => selectedMovIds.has(r['ID'])) : movFiltrado;
+    if (!source.length) { alert('No hay movimientos para exportar. Presiona Actualizar primero.'); return; }
+
+    const headers = TRFMAN_COLUMNAS.slice();
+    const ws = {};
+    headers.forEach((h, c) => { ws[XLSX.utils.encode_cell({ r: 0, c })] = { t: 's', v: h }; });
+    source.forEach((row, i) => {
+        headers.forEach((h, c) => {
+            const raw = String(row[h] ?? '').trim();
+            const addr = XLSX.utils.encode_cell({ r: i + 1, c });
+            if (TRFMAN_TIPO_NUM.includes(h.trim().toUpperCase())) {
+                ws[addr] = { t: 'n', v: parseFloat(raw.replace(/,/g, '')) || 0 };
+            } else if (raw !== '') {
+                ws[addr] = { t: 's', v: raw };      // texto puro
+            }                                        // vacío = sin celda, como en el modelo
+        });
+    });
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: source.length, c: headers.length - 1 } });
+    ws['!cols'] = headers.map(h => {
+        let max = h.length;
+        source.forEach(row => { const len = String(row[h] ?? '').length; if (len > max) max = len; });
+        return { wch: Math.min(max + 2, 50) };
+    });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, TRFMAN_HOJA);
+    XLSX.writeFile(wb, TRFMAN_ARCHIVO, { bookType: 'xls' });
+
+    // Solo si se exportó una selección puntual se marcan como Trasladado
+    if (conSeleccion) marcarTrasladadoMov(source.map(r => r['ID']).filter(Boolean));
+}
+
+// ---------- Marcar "Trasladado" en el Sheet (Apps Script) ----------
+async function marcarTrasladadoMov(ids) {
+    if (!APPS_SCRIPT_URL_SALDO) {
+        console.warn('APPS_SCRIPT_URL_SALDO no configurado: no se pudo marcar Trasladado en el Sheet.');
+        return;
+    }
+    try {
+        const resp = await fetch(APPS_SCRIPT_URL_SALDO, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // evita preflight CORS
+            body: JSON.stringify({ token: UPLOAD_TOKEN, action: 'marcarTrasladado', ids })
+        });
+        const result = await resp.json();
+        if (!result.ok) {
+            alert('El archivo TRFMAN se descargó, pero no se pudo marcar "Trasladado" en el Sheet:\n' + (result.error || 'Error desconocido'));
+            return;
+        }
+    } catch (e) {
+        alert('El archivo TRFMAN se descargó, pero no se pudo conectar con el Sheet para marcar "Trasladado": ' + e.message);
+        return;
+    }
+
+    // Refleja el cambio en pantalla sin esperar al CSV publicado
+    const idSet = new Set(ids.map(String));
+    const now = Date.now();
+    dataMov.forEach(r => { if (idSet.has(String(r['ID']))) r['COMENTARIO'] = 'Trasladado'; });
+    idSet.forEach(id => { movTrasladadoOverride[id] = now; });
+    idSet.forEach(id => selectedMovIds.delete(id));
+    construirIndiceMov();
+    aplicarFiltroMov();
+}
+
+// =========================================================
 // TABLA BODEGAS
 // =========================================================
 function renderBodegas() {
@@ -1138,13 +1512,14 @@ function renderOcupabilidad() {
 function onSearch() {
     const activa = document.querySelector('.section-view.active').id;
     if (activa === 'view-saldo') aplicarFiltroSaldo();
+    if (activa === 'view-movimientos') aplicarFiltroMov();
     if (activa === 'view-maestra') renderMaestra();
 }
 
 // =========================================================
 // NAVEGACIÓN ENTRE SECCIONES
 // =========================================================
-const TITLES = { dashboard: 'Resumen Ejecutivo', saldo: 'Consulta de Saldo', interfaz: 'Generar Interfaz', tickets: 'Tickets', bodegas: 'Catálogo de Bodegas', maestra: 'Maestra de Artículos', ocupabilidad: 'Ocupabilidad' };
+const TITLES = { dashboard: 'Resumen Ejecutivo', saldo: 'Consulta de Saldo', movimientos: 'Movimientos', interfaz: 'Generar Interfaz', tickets: 'Tickets', bodegas: 'Catálogo de Bodegas', maestra: 'Maestra de Artículos', ocupabilidad: 'Ocupabilidad' };
 const NAV_ACTIVE_CLASSES   = ['active', 'bg-secondary-container', 'text-on-secondary-container', 'font-bold'];
 const NAV_INACTIVE_CLASSES = ['text-on-primary-container', 'hover:bg-surface-variant/20'];
 
