@@ -225,10 +225,22 @@
 <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 shadow-sm max-w-sm">
 <div class="space-y-3 mb-4">
 <div class="flex justify-between items-center">
+<span class="text-xs font-bold text-on-surface-variant uppercase">Ubicaciones únicas</span>
+<span class="font-data-mono text-sm font-bold text-on-surface" id="ocup-ubic-val">—</span>
+</div>
+<p class="text-xs text-on-surface-variant">Ubicaciones únicas de Saldo, sin las que empiezan con 00 ni las que tienen una letra en la 2.ª posición.</p>
+<div class="flex justify-between items-center gap-3">
+<label for="ocup-anaquel" class="text-xs font-bold text-on-surface-variant uppercase">Anaquel</label>
+<input id="ocup-anaquel" type="number" min="0" step="1" value="0" oninput="updateOcupabilidadWidget()" class="w-28 text-right font-data-mono text-sm border border-outline-variant rounded-lg px-2 py-1 bg-surface-container-lowest outline-none focus:ring-2 focus:ring-primary">
+</div>
+<div class="flex justify-between items-center gap-3">
+<label for="ocup-fuera" class="text-xs font-bold text-on-surface-variant uppercase">Fuera de sistema</label>
+<input id="ocup-fuera" type="number" min="0" step="1" value="0" oninput="updateOcupabilidadWidget()" class="w-28 text-right font-data-mono text-sm border border-outline-variant rounded-lg px-2 py-1 bg-surface-container-lowest outline-none focus:ring-2 focus:ring-primary">
+</div>
+<div class="flex justify-between items-center border-t border-outline-variant pt-3">
 <span class="text-xs font-bold text-on-surface-variant uppercase">Total a registrar hoy</span>
 <span class="font-data-mono text-lg font-bold text-primary" id="ocup-total-val">—</span>
 </div>
-<p class="text-xs text-on-surface-variant">Ubicaciones únicas con existencia registradas en Saldo.</p>
 </div>
 <button onclick="alimentarOcupabilidad()" id="btn-alimentar-ocupabilidad" class="w-full bg-primary text-on-primary py-2 rounded-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform">
 <span class="material-symbols-outlined text-[18px]">bolt</span>Alimentar
@@ -1636,6 +1648,9 @@ async function cargarPlantillaSaldo(event) {
 // Reglas por botón. Los campos frwh/frlc que NO se especifican toman el valor
 // original de la fila (WHS / UBICACIÓN de la plantilla). rccmt es texto fijo
 // (solo aplica a SIGTRA/SIWTRA, ya no se pide de forma manual).
+// Interfaces donde RBLOT debe salir SIEMPRE como texto en el XLS
+const INTERFAZ_RBLOT_TEXTO = ['CG_TR', 'TR_PD', 'PD_LT'];
+
 const INTERFAZ_CONFIG = {
     LT_PP:  { grupo: 'TRFMAN', label: 'LT → PP',           towh: 'PP',                  tolc: 'PISO' },
     PP_IV:  { grupo: 'TRFMAN', label: 'PP → IV', frwh: 'PP', towh: 'IV', frlc: 'PISO',   tolc: 'PISO' },
@@ -1758,7 +1773,7 @@ async function cargarPlantillaInterfaz(event) {
         }
 
         interfazPlantillaRows = rows;
-        document.getElementById('interfaz-plantilla-label').textContent = `${rows.length} fila(s) cargada(s) de "${file.name}"`;
+        document.getElementById('interfaz-plantilla-label').textContent = `${rows.length} fila(s) cargada(s) de "${file.name}" — puedes editar las celdas antes de generar`;
         document.querySelectorAll('.btn-interfaz').forEach(b => b.disabled = false);
         renderTablaPlantillaInterfaz();
     } catch (err) {
@@ -1767,19 +1782,31 @@ async function cargarPlantillaInterfaz(event) {
         event.target.value = '';
     }
 }
+const INTERFAZ_COLS_EDITABLES = [
+    ['WHS', ''], ['UBICACIÓN', 'font-data-mono'], ['CÓDIGO', 'font-data-mono'],
+    ['CÓD. BPCS', 'font-data-mono'], ['LOTE BPCS', 'font-data-mono'],
+    ['LOTE FÍSICO', 'font-data-mono'], ['EXPIRA', 'font-data-mono'],
+    ['SALDO', 'text-right'], ['COMENTARIO', '']
+];
 function renderTablaPlantillaInterfaz() {
     const tbody = document.getElementById('tbody-interfaz');
-    tbody.innerHTML = interfazPlantillaRows.map(r => `<tr>
-        <td class="px-4 py-2 whitespace-nowrap">${r['WHS']}</td>
-        <td class="px-4 py-2 whitespace-nowrap font-data-mono">${r['UBICACIÓN']}</td>
-        <td class="px-4 py-2 whitespace-nowrap font-data-mono">${r['CÓDIGO']}</td>
-        <td class="px-4 py-2 whitespace-nowrap font-data-mono">${r['CÓD. BPCS']}</td>
-        <td class="px-4 py-2 whitespace-nowrap font-data-mono">${r['LOTE BPCS']}</td>
-        <td class="px-4 py-2 whitespace-nowrap font-data-mono">${r['LOTE FÍSICO']}</td>
-        <td class="px-4 py-2 whitespace-nowrap font-data-mono">${r['EXPIRA']}</td>
-        <td class="px-4 py-2 text-right">${r['SALDO']}</td>
-        <td class="px-4 py-2">${r['COMENTARIO']}</td>
+    tbody.innerHTML = interfazPlantillaRows.map((r, i) => `<tr>
+        ${INTERFAZ_COLS_EDITABLES.map(([k, cls]) => `<td class="px-2 py-1">
+            <input type="text" value="${movEsc(r[k])}" data-i="${i}" data-k="${movEsc(k)}"
+                oninput="editarCeldaInterfaz(this)"
+                class="w-full min-w-[70px] bg-transparent border border-transparent hover:border-outline-variant focus:border-primary focus:bg-surface-container-lowest rounded px-2 py-1 outline-none text-sm ${cls}">
+        </td>`).join('')}
     </tr>`).join('');
+}
+// Guarda en memoria lo que el usuario edita en la plantilla cargada.
+// Si el valor original era numérico y lo escrito sigue siendo un número "limpio"
+// (sin ceros a la izquierda, etc.), se conserva como número.
+function editarCeldaInterfaz(el) {
+    const i = Number(el.dataset.i), k = el.dataset.k;
+    const orig = interfazPlantillaRows[i][k];
+    let v = el.value;
+    if (typeof orig === 'number' && v.trim() !== '' && String(Number(v)) === v.trim()) v = Number(v);
+    interfazPlantillaRows[i][k] = v;
 }
 
 // Convierte EXPIRA a número YYYYMMDD si viene en ese formato; si no, lo deja tal cual.
@@ -1820,7 +1847,7 @@ function confirmarModalInterfaz() {
     const data = interfazPlantillaRows.map(r => ({
         'RCCUS': 254,
         'RBPRD': r['CÓD. BPCS'] || '',
-        'RBLOT': r['LOTE BPCS'] || '',
+        'RBLOT': INTERFAZ_RBLOT_TEXTO.includes(tipo) ? String(r['LOTE BPCS'] ?? '').trim() : (r['LOTE BPCS'] || ''),
         'RQTYT': getSaldoNumerico(r),
         'RFRWH': cfg.frwh || (r['WHS'] || ''),
         'RTOWH': cfg.towh || '',
@@ -1854,7 +1881,7 @@ function generarInterfazDirecta(tipo) {
         'RTRAN': cfg.rtran,
         'RDEXP': normalizarExpira(r['EXPIRA']),
         'RNRANA': null,
-        'RNDOC': r['COMENTARIO'] || '',
+        'RNDOC': null,
         'RDREF': r['COMENTARIO'] || '',
         'RCCMT': cfg.rccmt,
         'RRCDE': '02'
@@ -1995,34 +2022,64 @@ async function actualizarTicketCampo(input) {
 
 // =========================================================
 // WIDGET DASHBOARD — Ocupabilidad de hoy + botón Alimentar
-// (valores únicos de UBICACIÓN en la hoja de Saldo + piso fijo)
+// Total = ubicaciones únicas de Saldo (con filtros) + Anaquel + Fuera de sistema
 // =========================================================
+// Una ubicación NO cuenta si empieza con "00" o si su 2.ª posición es una letra.
+function ubicacionCuentaParaOcupabilidad(u) {
+    if (!u) return false;
+    if (u.startsWith('00')) return false;
+    if (u.length >= 2 && /\p{L}/u.test(u[1])) return false;
+    return true;
+}
 function getUbicacionesOcupadasSaldo() {
     const set = new Set();
     dataSaldo.forEach(r => {
-        const ubic = (r['UBICACIÓN'] || r['UBICACION'] || '').trim().toUpperCase();
-        if (ubic) set.add(ubic);
+        const ubic = String(r['UBICACIÓN'] || r['UBICACION'] || '').trim().toUpperCase();
+        if (ubicacionCuentaParaOcupabilidad(ubic)) set.add(ubic);
     });
     return set;
 }
+// Lee un entero >= 0 de un input (vacío = 0). Devuelve NaN si no es válido.
+function leerEnteroOcup(id) {
+    const v = document.getElementById(id).value.trim();
+    if (v === '') return 0;
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 0 ? n : NaN;
+}
+// Último cálculo válido: { ubic, anaquel, fuera, total } o null
+let ocupCalculo = null;
 function updateOcupabilidadWidget() {
     const hoy = new Date();
     document.getElementById('ocup-fecha-hoy').textContent = hoy.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    if (!dataSaldo.length) return;
-    const ocupadas = getUbicacionesOcupadasSaldo().size;
-    document.getElementById('ocup-total-val').textContent = ocupadas.toLocaleString('es-PE');
+    const ubicEl = document.getElementById('ocup-ubic-val');
+    const totalEl = document.getElementById('ocup-total-val');
+    ocupCalculo = null;
+    if (!dataSaldo.length) { ubicEl.textContent = '—'; totalEl.textContent = '—'; return; }
+
+    const ubic = getUbicacionesOcupadasSaldo().size;
+    ubicEl.textContent = ubic.toLocaleString('es-PE');
+
+    const anaquel = leerEnteroOcup('ocup-anaquel');
+    const fuera = leerEnteroOcup('ocup-fuera');
+    if (Number.isNaN(anaquel) || Number.isNaN(fuera)) { totalEl.textContent = '—'; return; }
+
+    const total = ubic + anaquel + fuera;
+    ocupCalculo = { ubic, anaquel, fuera, total };
+    totalEl.textContent = total.toLocaleString('es-PE');
 }
 async function alimentarOcupabilidad() {
     if (!APPS_SCRIPT_URL_OCUPABILIDAD) {
         alert('Falta configurar APPS_SCRIPT_URL_OCUPABILIDAD en el código (constante al inicio del <script>).');
         return;
     }
-    const totalEl = document.getElementById('ocup-total-val');
-    if (totalEl.textContent === '—') {
-        alert('Aún no se pudo calcular el total (espera a que carguen los datos de Saldo) y vuelve a intentar.');
+    updateOcupabilidadWidget();
+    if (!ocupCalculo) {
+        alert(dataSaldo.length
+            ? 'Anaquel y Fuera de sistema deben ser números enteros iguales o mayores a 0.'
+            : 'Aún no se pudo calcular el total (espera a que carguen los datos de Saldo) y vuelve a intentar.');
         return;
     }
-    const valor = Number(totalEl.textContent.replace(/,/g, ''));
+    const valor = ocupCalculo.total;
     const hoy = new Date();
     const mes = hoy.getMonth() + 1, anio = hoy.getFullYear(), dia = hoy.getDate();
 
@@ -2049,7 +2106,7 @@ async function alimentarOcupabilidad() {
         }
 
         msg.className = 'text-xs mt-2 text-green-700';
-        msg.textContent = `Guardado: día ${dia} = ${valor}. El Sheet puede tardar 1-2 min en reflejarlo.`;
+        msg.textContent = `Guardado: día ${dia} = ${valor} (ubicaciones ${ocupCalculo.ubic} + anaquel ${ocupCalculo.anaquel} + fuera de sistema ${ocupCalculo.fuera}). El Sheet puede tardar 1-2 min en reflejarlo.`;
         setTimeout(async () => { await cargarOcupabilidad(true); renderOcupabilidad(); }, 3000);
     } catch (e) {
         msg.className = 'text-xs mt-2 text-error';
