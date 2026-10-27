@@ -1378,10 +1378,21 @@ function exportarMovTRFMAN() {
     const source = conSeleccion ? dataMov.filter(r => selectedMovIds.has(r['ID'])) : movFiltrado;
     if (!source.length) { alert('No hay movimientos para exportar. Presiona Actualizar primero.'); return; }
 
+    // Reasignación de campos solo para el TRFMAN de Movimientos:
+    //   RTHCMT <- lo que estaba en RCOM
+    //   RCOM   <- lo que estaba en RNDOC
+    //   RNDOC  <- vacío
+    const filasTRFMAN = source.map(r => ({
+        ...r,
+        RTHCMT: r['RCOM'],
+        RCOM: r['RNDOC'],
+        RNDOC: ''
+    }));
+
     const headers = TRFMAN_COLUMNAS.slice();
     const ws = {};
     headers.forEach((h, c) => { ws[XLSX.utils.encode_cell({ r: 0, c })] = { t: 's', v: h }; });
-    source.forEach((row, i) => {
+    filasTRFMAN.forEach((row, i) => {
         headers.forEach((h, c) => {
             const raw = String(row[h] ?? '').trim();
             const addr = XLSX.utils.encode_cell({ r: i + 1, c });
@@ -1392,10 +1403,10 @@ function exportarMovTRFMAN() {
             }                                        // vacío = sin celda, como en el modelo
         });
     });
-    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: source.length, c: headers.length - 1 } });
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: filasTRFMAN.length, c: headers.length - 1 } });
     ws['!cols'] = headers.map(h => {
         let max = h.length;
-        source.forEach(row => { const len = String(row[h] ?? '').length; if (len > max) max = len; });
+        filasTRFMAN.forEach(row => { const len = String(row[h] ?? '').length; if (len > max) max = len; });
         return { wch: Math.min(max + 2, 50) };
     });
 
