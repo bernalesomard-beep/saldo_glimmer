@@ -228,10 +228,10 @@
 <span class="text-xs font-bold text-on-surface-variant uppercase">Ubicaciones únicas</span>
 <span class="font-data-mono text-sm font-bold text-on-surface" id="ocup-ubic-val">—</span>
 </div>
-<p class="text-xs text-on-surface-variant">Ubicaciones únicas de Saldo, sin las que empiezan con 00 ni las que tienen una letra en la 2.ª posición.</p>
+<p class="text-xs text-on-surface-variant">Ubicaciones únicas de Saldo, sin las que empiezan con 00 ni las que tienen una letra en la 2.ª o 3.ª posición. Anaquel viene en 56 por defecto y puedes modificarlo.</p>
 <div class="flex justify-between items-center gap-3">
 <label for="ocup-anaquel" class="text-xs font-bold text-on-surface-variant uppercase">Anaquel</label>
-<input id="ocup-anaquel" type="number" min="0" step="1" value="0" oninput="updateOcupabilidadWidget()" class="w-28 text-right font-data-mono text-sm border border-outline-variant rounded-lg px-2 py-1 bg-surface-container-lowest outline-none focus:ring-2 focus:ring-primary">
+<input id="ocup-anaquel" type="number" min="0" step="1" value="56" oninput="updateOcupabilidadWidget()" class="w-28 text-right font-data-mono text-sm border border-outline-variant rounded-lg px-2 py-1 bg-surface-container-lowest outline-none focus:ring-2 focus:ring-primary">
 </div>
 <div class="flex justify-between items-center gap-3">
 <label for="ocup-fuera" class="text-xs font-bold text-on-surface-variant uppercase">Fuera de sistema</label>
@@ -2035,17 +2035,23 @@ async function actualizarTicketCampo(input) {
 // WIDGET DASHBOARD — Ocupabilidad de hoy + botón Alimentar
 // Total = ubicaciones únicas de Saldo (con filtros) + Anaquel + Fuera de sistema
 // =========================================================
-// Una ubicación NO cuenta si empieza con "00" o si su 2.ª posición es una letra.
+// Una ubicación NO cuenta si empieza con "00" o si su 2.ª o 3.ª posición es una letra.
 function ubicacionCuentaParaOcupabilidad(u) {
     if (!u) return false;
     if (u.startsWith('00')) return false;
     if (u.length >= 2 && /\p{L}/u.test(u[1])) return false;
+    if (u.length >= 3 && /\p{L}/u.test(u[2])) return false;
     return true;
 }
 function getUbicacionesOcupadasSaldo() {
     const set = new Set();
+    if (!dataSaldo.length) return set;
+    // Busca la columna de ubicación ignorando acentos/mayúsculas (UBICACIÓN, UBICACION, etc.)
+    const norm = h => h.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase();
+    const colUbic = Object.keys(dataSaldo[0]).find(h => norm(h) === 'UBICACION');
+    if (!colUbic) return set;
     dataSaldo.forEach(r => {
-        const ubic = String(r['UBICACIÓN'] || r['UBICACION'] || '').trim().toUpperCase();
+        const ubic = String(r[colUbic] || '').trim().toUpperCase();
         if (ubicacionCuentaParaOcupabilidad(ubic)) set.add(ubic);
     });
     return set;
