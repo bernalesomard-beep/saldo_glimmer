@@ -546,9 +546,18 @@
 <section class="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden flex flex-col shadow-sm flex-1">
 <div class="px-6 py-4 border-b border-outline-variant flex items-center justify-between">
 <h3 class="font-headline-sm text-headline-sm text-on-surface">Maestra de Artículos</h3>
+<div class="flex items-center gap-2 flex-wrap">
+<input type="file" id="input-plantilla-maestra" accept=".xls,.xlsx,.csv" class="hidden" onchange="cargarPlantillaMaestra(event)">
+<button onclick="descargarPlantillaMaestra()" class="flex items-center gap-2 px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10">
+<span class="material-symbols-outlined text-[18px]">description</span>Plantilla
+</button>
+<button onclick="document.getElementById('input-plantilla-maestra').click()" class="flex items-center gap-2 px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-bold hover:bg-surface-variant/10">
+<span class="material-symbols-outlined text-[18px]">upload</span>Importar / Actualizar
+</button>
 <button onclick="exportarXLSX('maestra')" class="flex items-center gap-2 px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-bold active:scale-95">
 <span class="material-symbols-outlined text-[18px]">download</span>Exportar
 </button>
+</div>
 </div>
 <div class="overflow-auto flex-1" style="max-height: calc(100vh - 260px);">
 <table class="w-full text-left border-collapse min-w-[1400px]">
@@ -631,6 +640,34 @@
 </thead>
 <tbody id="tbody-detalle-interfaz" class="divide-y divide-surface-variant font-body-md text-sm"></tbody>
 </table>
+</div>
+</div>
+</div>
+
+<!-- ================= MODAL: IMPORTAR MAESTRA ================= -->
+<div id="modal-maestra-import" class="hidden fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] flex flex-col">
+<div class="px-6 py-4 border-b border-outline-variant flex items-center justify-between">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Importar / Actualizar Maestra</h3>
+<button onclick="cerrarModalImportMaestra()" class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined">close</span></button>
+</div>
+<div class="px-6 py-4 space-y-4 overflow-auto">
+<p class="text-xs text-on-surface-variant" id="maestra-import-resumen"></p>
+<p class="text-xs font-bold text-on-surface uppercase tracking-wide">En los códigos que ya existen, ¿qué actualizar?</p>
+<label class="flex items-start gap-3 cursor-pointer">
+<input type="checkbox" id="maestra-chk-ean" class="mt-1">
+<span><span class="text-sm font-bold text-on-surface">Actualizar EAN 13 / EAN 14</span><br><span id="maestra-ean-detalle" class="text-xs text-on-surface-variant break-words"></span></span>
+</label>
+<label class="flex items-start gap-3 cursor-pointer">
+<input type="checkbox" id="maestra-chk-factor" class="mt-1">
+<span><span class="text-sm font-bold text-on-surface">Actualizar factor de empaque (UUxEMP)</span><br><span id="maestra-factor-detalle" class="text-xs text-on-surface-variant break-words"></span></span>
+</label>
+<p class="text-xs text-on-surface-variant">Los códigos nuevos se agregan completos. El resto de campos (código, descripción, marca, base, altura, UUxPALET) se actualiza siempre; las celdas vacías de la plantilla no borran datos.</p>
+<p id="maestra-import-avisos" class="text-xs text-error"></p>
+</div>
+<div class="px-6 py-4 border-t border-outline-variant flex justify-end gap-2">
+<button onclick="cerrarModalImportMaestra()" class="px-4 py-2 rounded-lg text-xs font-bold border border-outline-variant hover:bg-surface-variant/10">Cancelar</button>
+<button id="btn-confirmar-maestra" onclick="confirmarImportMaestra()" class="px-4 py-2 rounded-lg text-xs font-bold bg-primary text-on-primary active:scale-95 flex items-center gap-1">Importar</button>
 </div>
 </div>
 </div>
@@ -820,7 +857,9 @@ async function cargarSaldo(force = false) {
 async function cargarMaestra(force = false) {
     const text = await fetchCSV(URL_MAESTRA, force);
     const { headers, rows } = parseCSV(text);
+    headersMaestra = headers.map(h => h.trim());
     dataMaestra = toObjects(headers, rows);
+    reaplicarImportsMaestra();   // si el CSV publicado aún no refleja una importación reciente
 }
 async function cargarBodegas(force = false) {
     const text = await fetchCSV(URL_BODEGAS, force);
@@ -2128,6 +2167,267 @@ async function alimentarOcupabilidad() {
     } catch (e) {
         msg.className = 'text-xs mt-2 text-error';
         msg.textContent = 'Error de conexión: ' + e.message;
+    } finally {
+        btn.innerHTML = original;
+        btn.style.pointerEvents = '';
+    }
+}
+
+// =========================================================
+// MAESTRA — PLANTILLA .XLS / IMPORTAR Y ACTUALIZAR
+// Llave: CODIGO BPCS.
+//  - Código nuevo      -> se agrega completo.
+//  - Código existente  -> se actualizan los campos con valor en la plantilla
+//                         (celda vacía = no borra). EAN 13/14 y UUxEMP
+//                         (factor de empaque) solo si el usuario lo confirma.
+// El Apps Script (acción 'cargarMaestra') aplica la misma regla en el Sheet.
+// =========================================================
+const MAESTRA_CAMPOS = {
+    codigo:   { label: 'CODIGO',       alias: ['CODIGO'] },
+    bpcs:     { label: 'CODIGO BPCS',  alias: ['CODIGO BPCS'] },
+    desc:     { label: 'DESCRIPCCION', alias: ['DESCRIPCCION', 'DESCRIPCION'] },
+    ean13:    { label: 'EAN 13',       alias: ['EAN 13', 'EAN13'] },
+    ean14:    { label: 'EAN 14',       alias: ['EAN 14', 'EAN14'] },
+    marca:    { label: 'MARCA',        alias: ['MARCA'] },
+    uuxemp:   { label: 'UUxEMP',       alias: ['UUXEMP'] },
+    base:     { label: 'BASE',         alias: ['BASE'] },
+    altura:   { label: 'ALTURA',       alias: ['ALTURA'] },
+    uuxpalet: { label: 'UUxPALET',     alias: ['UUXPALET'] }
+};
+const MAESTRA_NUMERICOS = ['uuxemp', 'base', 'altura', 'uuxpalet'];
+const MAESTRA_IMPORT_TTL = 5 * 60 * 1000;   // el CSV publicado tarda 1-2 min en reflejar el cambio
+
+let headersMaestra = [];
+let maestraImportsRecientes = [];   // { ts, filas, opts } para re-aplicar si el CSV aún no refleja el cambio
+let maestraImportPendiente = null;  // resultado de prepararImportMaestra mientras el modal está abierto
+
+function normHeader(h) {
+    return String(h == null ? '' : h).normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .toUpperCase().replace(/\s+/g, ' ').trim();
+}
+// clave interna -> nombre real de la cabecera dentro de `headers`
+function maestraColMap(headers) {
+    const map = {};
+    Object.keys(MAESTRA_CAMPOS).forEach(k => {
+        const h = headers.find(x => MAESTRA_CAMPOS[k].alias.includes(normHeader(x)));
+        if (h !== undefined) map[k] = h;
+    });
+    return map;
+}
+function igualMaestra(k, a, b) {
+    const sa = String(a == null ? '' : a).trim(), sb = String(b == null ? '' : b).trim();
+    if (MAESTRA_NUMERICOS.includes(k) && sa !== '' && sb !== '') {
+        const na = Number(sa.replace(/,/g, '')), nb = Number(sb.replace(/,/g, ''));
+        if (Number.isFinite(na) && Number.isFinite(nb)) return na === nb;
+    }
+    return sa === sb;
+}
+
+// ---------- Plantilla .xls (cabeceras iguales a las del Sheet) ----------
+function descargarPlantillaMaestra() {
+    const real = maestraColMap(headersMaestra);
+    const keys = Object.keys(MAESTRA_CAMPOS);
+    const headers = keys.map(k => real[k] || MAESTRA_CAMPOS[k].label);
+    const ws = XLSX.utils.aoa_to_sheet([headers]);
+    ws['!cols'] = keys.map(k => ({ wch: k === 'desc' ? 40 : 16 }));
+
+    const info = [
+        ['INSTRUCCIONES - Plantilla Maestra de Artículos'],
+        [''],
+        ['1. Llena la hoja "Plantilla Maestra" desde la fila 2. No cambies los nombres de las cabeceras.'],
+        ['2. CODIGO BPCS es la llave: si ya existe en la Maestra se actualiza; si no existe se agrega como artículo nuevo.'],
+        ['3. Las celdas vacías NO borran datos existentes: solo se actualiza lo que traiga valor.'],
+        ['4. Al importar, el sistema pregunta si se actualizan EAN 13 / EAN 14 y UUxEMP (factor de empaque) de los códigos que ya existen.'],
+        ['5. Formatea CODIGO, CODIGO BPCS, EAN 13 y EAN 14 como Texto antes de pegar datos, para no perder ceros a la izquierda.'],
+        ['6. CODIGO BPCS no puede venir vacío ni repetido dentro de la plantilla.']
+    ];
+    const wsInfo = XLSX.utils.aoa_to_sheet(info);
+    wsInfo['!cols'] = [{ wch: 120 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Plantilla Maestra');
+    XLSX.utils.book_append_sheet(wb, wsInfo, 'Instrucciones');
+    const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    XLSX.writeFile(wb, `plantilla_maestra_${fecha}.xls`, { bookType: 'xls' });
+}
+
+// ---------- Lectura y validación de la plantilla (sin tocar el DOM) ----------
+function prepararImportMaestra(aoa) {
+    if (!aoa.length) return { error: 'El archivo está vacío.' };
+    const hdrs = aoa[0].map(h => String(h).trim());
+    const colTpl = maestraColMap(hdrs);
+    if (colTpl.bpcs === undefined) return { error: 'La plantilla no tiene la columna "CODIGO BPCS".' };
+    const idx = {};
+    Object.keys(colTpl).forEach(k => { idx[k] = hdrs.indexOf(colTpl[k]); });
+
+    const filas = [], ignoradas = [], duplicados = [];
+    const vistos = new Map();
+    aoa.slice(1).forEach((r, i) => {
+        if (!r.some(c => String(c).trim() !== '')) return;
+        const nroFila = i + 2;
+        const fila = {};
+        Object.keys(MAESTRA_CAMPOS).forEach(k => {
+            fila[k] = idx[k] === undefined ? '' : String(r[idx[k]] == null ? '' : r[idx[k]]).trim();
+        });
+        if (!fila.bpcs) { ignoradas.push(nroFila); return; }
+        const key = fila.bpcs.toUpperCase();
+        if (vistos.has(key)) { duplicados.push(`${fila.bpcs} (filas ${vistos.get(key)} y ${nroFila})`); return; }
+        vistos.set(key, nroFila);
+        filas.push(fila);
+    });
+    if (duplicados.length) {
+        return { error: 'La plantilla repite CODIGO BPCS: ' + duplicados.slice(0, 5).join(', ') + (duplicados.length > 5 ? ' …' : '') + '. Corrígela y vuelve a subirla.' };
+    }
+    if (!filas.length) return { error: 'La plantilla no tiene filas con CODIGO BPCS.' };
+
+    const colSheet = maestraColMap(headersMaestra);
+    const actuales = new Map();
+    dataMaestra.forEach(r => {
+        const b = String(r[colSheet.bpcs] || '').trim().toUpperCase();
+        if (b && !actuales.has(b)) actuales.set(b, r);
+    });
+
+    let nuevos = 0, existentes = 0;
+    const difEan = [], difFactor = [];
+    filas.forEach(f => {
+        const cur = actuales.get(f.bpcs.toUpperCase());
+        if (!cur) { nuevos++; return; }
+        existentes++;
+        ['ean13', 'ean14'].forEach(k => {
+            if (f[k] !== '' && colSheet[k] && !igualMaestra(k, cur[colSheet[k]], f[k])) {
+                difEan.push({ bpcs: f.bpcs, campo: MAESTRA_CAMPOS[k].label, actual: cur[colSheet[k]] || '', nuevo: f[k] });
+            }
+        });
+        if (f.uuxemp !== '' && colSheet.uuxemp && !igualMaestra('uuxemp', cur[colSheet.uuxemp], f.uuxemp)) {
+            difFactor.push({ bpcs: f.bpcs, campo: 'UUxEMP', actual: cur[colSheet.uuxemp] || '', nuevo: f.uuxemp });
+        }
+    });
+    return { filas, nuevos, existentes, difEan, difFactor, ignoradas };
+}
+
+// ---------- Aplicar el cambio en memoria (misma regla que el Apps Script) ----------
+function aplicarImportMaestraLocal(filas, opts) {
+    const cm = maestraColMap(headersMaestra);
+    if (cm.bpcs === undefined) return;
+    const idx = new Map();
+    dataMaestra.forEach(r => {
+        const b = String(r[cm.bpcs] || '').trim().toUpperCase();
+        if (!b) return;
+        if (!idx.has(b)) idx.set(b, []);
+        idx.get(b).push(r);
+    });
+    filas.forEach(f => {
+        const key = f.bpcs.toUpperCase();
+        const destinos = idx.get(key);
+        if (!destinos) {
+            const nuevo = {};
+            headersMaestra.forEach(h => { nuevo[h] = ''; });
+            Object.keys(cm).forEach(k => { nuevo[cm[k]] = f[k] || ''; });
+            dataMaestra.push(nuevo);
+            idx.set(key, [nuevo]);
+            return;
+        }
+        destinos.forEach(r => {
+            Object.keys(cm).forEach(k => {
+                if (k === 'bpcs') return;
+                if ((k === 'ean13' || k === 'ean14') && !opts.actualizarEan) return;
+                if (k === 'uuxemp' && !opts.actualizarFactor) return;
+                if (f[k] !== '') r[cm[k]] = f[k];
+            });
+        });
+    });
+}
+function reaplicarImportsMaestra() {
+    const now = Date.now();
+    maestraImportsRecientes = maestraImportsRecientes.filter(i => now - i.ts < MAESTRA_IMPORT_TTL);
+    maestraImportsRecientes.forEach(i => aplicarImportMaestraLocal(i.filas, i.opts));
+}
+
+// ---------- Flujo de importación (UI) ----------
+async function cargarPlantillaMaestra(event) {
+    const file = event.target.files[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!APPS_SCRIPT_URL_OCUPABILIDAD) {
+        alert('Falta configurar APPS_SCRIPT_URL_OCUPABILIDAD en el código (constante al inicio del <script>).');
+        return;
+    }
+    if (!dataMaestra.length || maestraColMap(headersMaestra).bpcs === undefined) {
+        alert('Aún no se cargó la Maestra. Presiona Actualizar y vuelve a intentar.');
+        return;
+    }
+    try {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+        const prep = prepararImportMaestra(aoa);
+        if (prep.error) { alert(prep.error); return; }
+        mostrarModalImportMaestra(prep, file.name);
+    } catch (err) {
+        alert('No se pudo leer el archivo: ' + err.message);
+    }
+}
+
+function mostrarModalImportMaestra(prep, nombre) {
+    maestraImportPendiente = prep;
+    document.getElementById('maestra-import-resumen').textContent =
+        `${nombre}: ${prep.filas.length.toLocaleString('es-PE')} artículo(s) en la plantilla — ${prep.nuevos.toLocaleString('es-PE')} nuevo(s) y ${prep.existentes.toLocaleString('es-PE')} que ya existen en la Maestra.`;
+    const detalle = (lista) => {
+        if (!lista.length) return 'Sin diferencias con la Maestra actual.';
+        const ej = lista.slice(0, 5).map(d => `${d.bpcs} (${d.campo}): ${d.actual || 'vacío'} → ${d.nuevo}`).join(' | ');
+        return `${lista.length.toLocaleString('es-PE')} valor(es) distinto(s). Ej.: ${ej}${lista.length > 5 ? ' …' : ''}`;
+    };
+    document.getElementById('maestra-ean-detalle').textContent = detalle(prep.difEan);
+    document.getElementById('maestra-factor-detalle').textContent = detalle(prep.difFactor);
+    document.getElementById('maestra-chk-ean').checked = false;
+    document.getElementById('maestra-chk-factor').checked = false;
+    document.getElementById('maestra-import-avisos').textContent = prep.ignoradas.length
+        ? `Se ignorarán ${prep.ignoradas.length} fila(s) sin CODIGO BPCS (filas ${prep.ignoradas.slice(0, 8).join(', ')}${prep.ignoradas.length > 8 ? ' …' : ''}).`
+        : '';
+    document.getElementById('modal-maestra-import').classList.remove('hidden');
+}
+function cerrarModalImportMaestra() {
+    document.getElementById('modal-maestra-import').classList.add('hidden');
+    maestraImportPendiente = null;
+}
+
+async function confirmarImportMaestra() {
+    const p = maestraImportPendiente;
+    if (!p) return;
+    const opts = {
+        actualizarEan: document.getElementById('maestra-chk-ean').checked,
+        actualizarFactor: document.getElementById('maestra-chk-factor').checked
+    };
+    const btn = document.getElementById('btn-confirmar-maestra');
+    const original = btn.innerHTML;
+    btn.innerHTML = '<span class="material-symbols-outlined spin text-[16px]">sync</span> Enviando...';
+    btn.style.pointerEvents = 'none';
+    try {
+        const resp = await fetch(APPS_SCRIPT_URL_OCUPABILIDAD, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // evita preflight CORS
+            body: JSON.stringify({ token: UPLOAD_TOKEN, action: 'cargarMaestra', filas: p.filas, actualizarEan: opts.actualizarEan, actualizarFactor: opts.actualizarFactor })
+        });
+        const result = await resp.json();
+        if (!result.ok) { alert('No se pudo actualizar la Maestra: ' + (result.error || 'Error desconocido')); return; }
+
+        // Refleja el cambio en pantalla sin esperar al CSV publicado (1-2 min)
+        aplicarImportMaestraLocal(p.filas, opts);
+        maestraImportsRecientes.push({ ts: Date.now(), filas: p.filas, opts });
+        buildMaestraIndex();
+        renderMaestra();
+        renderKPIsDashboard();
+        aplicarFiltroSaldo();
+        cerrarModalImportMaestra();
+
+        const extra = (result.columnasNoEncontradas && result.columnasNoEncontradas.length)
+            ? `\nColumnas no encontradas en el Sheet (se omitieron): ${result.columnasNoEncontradas.join(', ')}` : '';
+        alert(`Maestra actualizada.\nNuevos: ${result.nuevos}\nActualizados: ${result.actualizados}\nSin cambios: ${result.sinCambios}` +
+              (result.ignoradas ? `\nIgnoradas: ${result.ignoradas}` : '') + extra +
+              '\n\nEl Sheet publicado puede tardar 1-2 min en reflejarlo al presionar Actualizar.');
+    } catch (e) {
+        alert('Error de conexión: ' + e.message);
     } finally {
         btn.innerHTML = original;
         btn.style.pointerEvents = '';
