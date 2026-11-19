@@ -710,6 +710,8 @@ const APPS_SCRIPT_URL_SALDO = 'https://script.google.com/macros/s/AKfycbyz9gFx_7
 const APPS_SCRIPT_URL_OCUPABILIDAD = 'https://script.google.com/macros/s/AKfycbyVOpABjYMcIA196eVTRF--iYTh4xhjJy_phAUV-hGjvlVXMrwZHLLAHSZvLJO8ZJ6g/exec';
 // Histórico de interfaz TRFMAN (botones LT→PP...PD→LT) y SIGTRA/SIWTRA usan el
 // MISMO Apps Script de arriba (Code.gs consolidado), solo cambia el "action".
+// La importación de la Maestra usa el script de Saldo (cargarMaestra). Si prefieres el de Ocupabilidad, cambia esta línea.
+const APPS_SCRIPT_URL_MAESTRA = APPS_SCRIPT_URL_SALDO;
 const APPS_SCRIPT_URL_HISTORICO_1 = APPS_SCRIPT_URL_SALDO;
 const APPS_SCRIPT_URL_HISTORICO_2 = APPS_SCRIPT_URL_SALDO;
 
@@ -2348,8 +2350,8 @@ async function cargarPlantillaMaestra(event) {
     const file = event.target.files[0];
     event.target.value = '';
     if (!file) return;
-    if (!APPS_SCRIPT_URL_OCUPABILIDAD) {
-        alert('Falta configurar APPS_SCRIPT_URL_OCUPABILIDAD en el código (constante al inicio del <script>).');
+    if (!APPS_SCRIPT_URL_MAESTRA) {
+        alert('Falta configurar APPS_SCRIPT_URL_MAESTRA en el código (constante al inicio del <script>).');
         return;
     }
     if (!dataMaestra.length || maestraColMap(headersMaestra).bpcs === undefined) {
@@ -2404,7 +2406,7 @@ async function confirmarImportMaestra() {
     btn.innerHTML = '<span class="material-symbols-outlined spin text-[16px]">sync</span> Enviando...';
     btn.style.pointerEvents = 'none';
     try {
-        const resp = await fetch(APPS_SCRIPT_URL_OCUPABILIDAD, {
+        const resp = await fetch(APPS_SCRIPT_URL_MAESTRA, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // evita preflight CORS
             body: JSON.stringify({ token: UPLOAD_TOKEN, action: 'cargarMaestra', filas: p.filas, actualizarEan: opts.actualizarEan, actualizarFactor: opts.actualizarFactor })
