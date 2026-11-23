@@ -1217,7 +1217,12 @@ function movEsc(v) {
     return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 function movEsTrasladado(r) {
-    return String(r['COMENTARIO'] || '').trim().toLowerCase() === 'trasladado';
+    const esT = v => String(v == null ? '' : v).trim().toLowerCase() === 'trasladado';
+    if (esT(r['COMENTARIO'])) return true;
+    // Respaldo: si el Apps Script dejó "Trasladado" en otra columna (cabecera distinta a COMENTARIO),
+    // la fila igual cuenta como trasladada.
+    for (const k in r) { if (esT(r[k])) return true; }
+    return false;
 }
 function movCantidad(r) {
     return parseFloat(String(r['RQTYT'] || '0').replace(/,/g, '')) || 0;
